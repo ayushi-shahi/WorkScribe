@@ -10,6 +10,7 @@ from app.models.member import OrgMember, OrgRole
 from app.models.organization import Organization
 from app.models.user import User
 from app.models.invitation import Invitation
+from app.models.project import Project, ProjectType
 
 __all__ = [
     "Base",
@@ -20,4 +21,6 @@ __all__ = [
     "OrgMember",
     "OrgRole",
     "Invitation",
+    "Project",
+    "ProjectType",
 ]

@@ -12,8 +12,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
-    from app.models.member import OrgMember
     from app.models.invitation import Invitation
+    from app.models.member import OrgMember
+    from app.models.project import Project
 
 
 class User(Base, UUIDMixin, TimestampMixin):
@@ -38,6 +39,9 @@ class User(Base, UUIDMixin, TimestampMixin):
     )
     invitations_created: Mapped[list[Invitation]] = relationship(
         "Invitation", back_populates="created_by_user", cascade="all, delete-orphan"
+    )
+    projects_created: Mapped[list[Project]] = relationship(
+        "Project", back_populates="creator"
     )
 
     def __repr__(self) -> str:
