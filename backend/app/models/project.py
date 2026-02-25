@@ -10,7 +10,10 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, TimestampMixin, UUIDMixin
 
 if TYPE_CHECKING:
+    from app.models.label import Label
     from app.models.organization import Organization
+    from app.models.task import Task
+    from app.models.task_status import TaskStatus
     from app.models.user import User
 
 
@@ -46,6 +49,15 @@ class Project(Base, UUIDMixin, TimestampMixin):
     )
     creator: Mapped[User] = relationship(
         "User", back_populates="projects_created"
+    )
+    statuses: Mapped[list[TaskStatus]] = relationship(
+        "TaskStatus", back_populates="project", cascade="all, delete-orphan"
+    )
+    tasks: Mapped[list[Task]] = relationship(
+        "Task", back_populates="project", cascade="all, delete-orphan"
+    )
+    labels: Mapped[list[Label]] = relationship(
+        "Label", back_populates="project", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

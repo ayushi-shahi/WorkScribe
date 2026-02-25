@@ -108,6 +108,7 @@ class InvitationResponse(BaseModel):
     org_id: UUID
     email: str
     role: str
+    token: str  # Required by test: data["token"]
     expires_at: datetime
     created_at: datetime
     is_expired: bool

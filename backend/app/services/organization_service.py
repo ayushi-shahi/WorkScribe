@@ -46,15 +46,6 @@ class OrganizationService:
     async def create_organization(
         self, data: OrganizationCreateRequest, owner: User
     ) -> OrganizationResponse:
-        """
-        Create a new organization.
-
-        - Validates slug uniqueness
-        - Creates organization record
-        - Assigns creator as Owner
-        - Returns OrganizationResponse
-        """
-        # Check slug uniqueness
         existing = await self.db.execute(
             select(Organization).where(Organization.slug == data.slug)
         )
@@ -64,12 +55,10 @@ class OrganizationService:
                 detail={"code": "SLUG_TAKEN", "message": "Organization slug is already taken"},
             )
 
-        # Create organization
         org = Organization(name=data.name, slug=data.slug)
         self.db.add(org)
         await self.db.flush()
 
-        # Add creator as Owner
         member = OrgMember(
             org_id=org.id,
             user_id=owner.id,
@@ -85,7 +74,6 @@ class OrganizationService:
     # -----------------------------------------------------------------------
 
     async def get_organization(self, slug: str) -> OrganizationResponse:
-        """Get organization by slug."""
         result = await self.db.execute(
             select(Organization).where(Organization.slug == slug)
         )
@@ -106,7 +94,6 @@ class OrganizationService:
     async def update_organization(
         self, org: Organization, data: OrganizationUpdateRequest
     ) -> OrganizationResponse:
-        
         if data.slug is not None and data.slug != org.slug:
             existing = await self.db.execute(
                 select(Organization).where(Organization.slug == data.slug)
@@ -130,7 +117,6 @@ class OrganizationService:
     # -----------------------------------------------------------------------
 
     async def list_members(self, org_id: UUID) -> MembersListResponse:
-        """List all members of an organization with user details."""
         result = await self.db.execute(
             select(OrgMember, User)
             .join(User, OrgMember.user_id == User.id)
@@ -161,13 +147,6 @@ class OrganizationService:
     async def invite_member(
         self, org: Organization, data: InviteRequest, inviter: User
     ) -> InvitationResponse:
-        """
-        Create an invitation for a new member.
-
-        - Checks if user is already a member
-        - Creates invitation record with secure token
-        - Queues invitation email via Celery
-        """
         # Check if email already has a pending invitation
         existing_invite = await self.db.execute(
             select(Invitation).where(
@@ -235,26 +214,100 @@ class OrganizationService:
             org_id=invitation.org_id,
             email=invitation.email,
             role=invitation.role.value,
+            token=token,
             expires_at=invitation.expires_at,
             created_at=invitation.created_at,
             is_expired=False,
         )
 
     # -----------------------------------------------------------------------
-    # Accept Invitation
+    # Accept Invitation — no auth, match user by invitation email
+    # -----------------------------------------------------------------------
+
+    async def accept_invitation_by_token(self, token: str) -> OrganizationResponse:
+        """
+        Accept invitation without auth header.
+
+        Looks up invitation by token, finds registered user by invitation email,
+        adds them as org member, marks invitation accepted.
+
+        Raises:
+            404 — token not found
+            400 — already accepted or expired
+            409 — no registered user for that email, or already a member
+        """
+        result = await self.db.execute(
+            select(Invitation).where(Invitation.token == token)
+        )
+        invitation = result.scalar_one_or_none()
+
+        if invitation is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "INVITE_NOT_FOUND", "message": "Invitation not found"},
+            )
+
+        if invitation.accepted_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "INVITE_USED", "message": "Invitation has already been accepted"},
+            )
+
+        if invitation.expires_at < datetime.now(UTC):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "INVITE_EXPIRED", "message": "Invitation has expired"},
+            )
+
+        # Find the registered user by invitation email
+        user_result = await self.db.execute(
+            select(User).where(User.email == invitation.email)
+        )
+        user = user_result.scalar_one_or_none()
+
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "USER_NOT_REGISTERED", "message": "No registered user found for this invitation email"},
+            )
+
+        # Check not already a member
+        existing_member = await self.db.execute(
+            select(OrgMember).where(
+                OrgMember.org_id == invitation.org_id,
+                OrgMember.user_id == user.id,
+            )
+        )
+        if existing_member.scalar_one_or_none() is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "ALREADY_MEMBER", "message": "User is already a member of this organization"},
+            )
+
+        # Add member
+        member = OrgMember(
+            org_id=invitation.org_id,
+            user_id=user.id,
+            role=invitation.role,
+        )
+        self.db.add(member)
+        invitation.accepted_at = datetime.now(UTC)
+        await self.db.flush()
+
+        org_result = await self.db.execute(
+            select(Organization).where(Organization.id == invitation.org_id)
+        )
+        org = org_result.scalar_one()
+        return OrganizationResponse.model_validate(org)
+
+    # -----------------------------------------------------------------------
+    # Accept Invitation — authenticated user variant (kept for future use)
     # -----------------------------------------------------------------------
 
     async def accept_invitation(
         self, token: str, current_user: User
     ) -> OrganizationResponse:
-        """
-        Accept an invitation.
-
-        - Validates token exists and is not expired
-        - Verifies user email matches invitation email
-        - Adds user as org member
-        - Marks invitation as accepted
-        """
+        """Accept invitation for an already-authenticated user (email must match)."""
         result = await self.db.execute(
             select(Invitation).where(Invitation.token == token)
         )
@@ -284,7 +337,6 @@ class OrganizationService:
                 detail={"code": "EMAIL_MISMATCH", "message": "Invitation was sent to a different email address"},
             )
 
-        # Check not already a member
         existing_member = await self.db.execute(
             select(OrgMember).where(
                 OrgMember.org_id == invitation.org_id,
@@ -297,19 +349,15 @@ class OrganizationService:
                 detail={"code": "ALREADY_MEMBER", "message": "You are already a member of this organization"},
             )
 
-        # Add member
         member = OrgMember(
             org_id=invitation.org_id,
             user_id=current_user.id,
             role=invitation.role,
         )
         self.db.add(member)
-
-        # Mark invitation accepted
         invitation.accepted_at = datetime.now(UTC)
         await self.db.flush()
 
-        # Return org
         org_result = await self.db.execute(
             select(Organization).where(Organization.id == invitation.org_id)
         )
@@ -323,7 +371,6 @@ class OrganizationService:
     async def revoke_invitation(
         self, org_id: UUID, invitation_id: UUID
     ) -> None:
-        """Delete a pending invitation."""
         result = await self.db.execute(
             select(Invitation).where(
                 Invitation.id == invitation_id,
@@ -352,13 +399,6 @@ class OrganizationService:
         new_role: str,
         acting_member: OrgMember,
     ) -> MemberResponse:
-        """
-        Change a member's role.
-
-        - Owner can change any role
-        - Admin can only set members to admin or member (not owner)
-        - Cannot change the owner's role
-        """
         result = await self.db.execute(
             select(OrgMember, User)
             .join(User, OrgMember.user_id == User.id)
@@ -377,14 +417,12 @@ class OrganizationService:
 
         target_member, target_user = row
 
-        # Cannot change owner's role
         if target_member.role == OrgRole.owner:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={"code": "CANNOT_CHANGE_OWNER", "message": "Cannot change the owner's role"},
             )
 
-        # Admin cannot assign owner role
         if acting_member.role == OrgRole.admin and new_role == "owner":
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
@@ -414,12 +452,6 @@ class OrganizationService:
         target_user_id: UUID,
         acting_member: OrgMember,
     ) -> None:
-        """
-        Remove a member from the organization.
-
-        - Cannot remove the owner
-        - Admin cannot remove other admins
-        """
         result = await self.db.execute(
             select(OrgMember).where(
                 OrgMember.org_id == org_id,

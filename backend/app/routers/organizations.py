@@ -17,7 +17,6 @@ from app.core.dependencies import get_current_user, get_org_member, get_redis, r
 from app.models.member import OrgMember, OrgRole
 from app.models.organization import Organization
 from app.models.user import User
-from app.schemas.auth import InvitationAcceptRequest, InvitationInfoResponse
 from app.schemas.organization import (
     InvitationResponse,
     InviteRequest,
@@ -56,12 +55,6 @@ async def create_organization(
     current_user: User = Depends(get_current_user),
     service: OrganizationService = Depends(get_org_service),
 ) -> OrganizationResponse:
-    """
-    Create a new organization.
-
-    - Slug must be globally unique (3-30 chars, lowercase alphanumeric + hyphens)
-    - Creator is automatically assigned Owner role
-    """
     return await service.create_organization(data, current_user)
 
 
@@ -78,7 +71,6 @@ async def get_organization(
     org_and_member: tuple[Organization, OrgMember] = Depends(get_org_member),
     service: OrganizationService = Depends(get_org_service),
 ) -> OrganizationResponse:
-    """Get organization details. Must be a member."""
     org, _ = org_and_member
     return await service.get_organization(org.slug)
 
@@ -99,7 +91,6 @@ async def update_organization(
     ),
     service: OrganizationService = Depends(get_org_service),
 ) -> OrganizationResponse:
-    """Update organization name and/or slug. Requires Owner or Admin role."""
     org, _ = org_and_member
     return await service.update_organization(org, data)
 
@@ -117,7 +108,6 @@ async def list_members(
     org_and_member: tuple[Organization, OrgMember] = Depends(get_org_member),
     service: OrganizationService = Depends(get_org_service),
 ) -> MembersListResponse:
-    """List all members of the organization."""
     org, _ = org_and_member
     return await service.list_members(org.id)
 
@@ -140,13 +130,6 @@ async def invite_member(
     current_user: User = Depends(get_current_user),
     service: OrganizationService = Depends(get_org_service),
 ) -> InvitationResponse:
-    """
-    Invite a user to the organization by email.
-
-    - Requires Owner or Admin role
-    - Sends invitation email via Celery
-    - Token expires in 48 hours
-    """
     org, _ = org_and_member
     return await service.invite_member(org, data, current_user)
 
@@ -167,33 +150,9 @@ async def revoke_invitation(
     ),
     service: OrganizationService = Depends(get_org_service),
 ) -> dict:
-    """Revoke a pending invitation. Requires Owner or Admin role."""
     org, _ = org_and_member
     await service.revoke_invitation(org.id, invitation_id)
     return {}
-
-
-# ---------------------------------------------------------------------------
-# Accept Invitation
-# ---------------------------------------------------------------------------
-
-@router.post(
-    "/invitations/{token}/accept",
-    response_model=OrganizationResponse,
-    summary="Accept an invitation",
-)
-async def accept_invitation(
-    token: str,
-    current_user: User = Depends(get_current_user),
-    service: OrganizationService = Depends(get_org_service),
-) -> OrganizationResponse:
-    """
-    Accept an organization invitation.
-
-    - User must be logged in with the same email the invitation was sent to
-    - Token must not be expired or already used
-    """
-    return await service.accept_invitation(token, current_user)
 
 
 # ---------------------------------------------------------------------------
@@ -213,13 +172,6 @@ async def update_member_role(
     ),
     service: OrganizationService = Depends(get_org_service),
 ) -> MemberResponse:
-    """
-    Change a member's role.
-
-    - Owner can change any role
-    - Admin can only assign admin or member (not owner)
-    - Cannot change the owner's role
-    """
     org, acting_member = org_and_member
     return await service.update_member_role(org.id, user_id, data.role, acting_member)
 
@@ -240,12 +192,6 @@ async def remove_member(
     ),
     service: OrganizationService = Depends(get_org_service),
 ) -> dict:
-    """
-    Remove a member from the organization.
-
-    - Cannot remove the owner
-    - Admin cannot remove other admins
-    """
     org, acting_member = org_and_member
     await service.remove_member(org.id, user_id, acting_member)
     return {}

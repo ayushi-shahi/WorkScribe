@@ -25,7 +25,9 @@ from app.schemas.auth import (
     ResetPasswordRequest,
     TokenResponse,
 )
+from app.schemas.organization import OrganizationResponse
 from app.services.auth_service import AuthService
+from app.services.organization_service import OrganizationService
 
 router = APIRouter()
 
@@ -36,6 +38,14 @@ def get_auth_service(
 ) -> AuthService:
     """Dependency that constructs AuthService."""
     return AuthService(db=db, redis=redis)
+
+
+def get_org_service(
+    db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+) -> OrganizationService:
+    """Dependency that constructs OrganizationService."""
+    return OrganizationService(db=db, redis=redis)
 
 
 # ---------------------------------------------------------------------------
@@ -52,13 +62,6 @@ async def register(
     data: RegisterRequest,
     service: AuthService = Depends(get_auth_service),
 ) -> TokenResponse:
-    """
-    Create a new user account.
-
-    - Email must be globally unique
-    - Password must be min 8 chars and contain at least 1 number
-    - Returns JWT access + refresh tokens on success
-    """
     return await service.register(data)
 
 
@@ -75,11 +78,6 @@ async def login(
     data: LoginRequest,
     service: AuthService = Depends(get_auth_service),
 ) -> TokenResponse:
-    """
-    Authenticate with email and password.
-
-    Returns JWT access + refresh tokens.
-    """
     return await service.login(data)
 
 
@@ -96,11 +94,6 @@ async def refresh(
     data: RefreshRequest,
     service: AuthService = Depends(get_auth_service),
 ) -> TokenResponse:
-    """
-    Exchange a valid refresh token for a new access + refresh token pair.
-
-    Refresh tokens are rotated on every use.
-    """
     return await service.refresh(data.refresh_token)
 
 
@@ -119,12 +112,6 @@ async def logout(
     current_user: User = Depends(get_current_user),
     service: AuthService = Depends(get_auth_service),
 ) -> None:
-    """
-    Logout the current user.
-
-    - Blacklists the current access token JTI in Redis
-    - Deletes the refresh token from Redis
-    """
     auth_header = request.headers.get("Authorization", "")
     access_token = auth_header.replace("Bearer ", "")
 
@@ -156,12 +143,6 @@ async def forgot_password(
     data: ForgotPasswordRequest,
     service: AuthService = Depends(get_auth_service),
 ) -> None:
-    """
-    Initiate password reset flow.
-
-    Always returns 204 regardless of whether the email exists
-    to prevent user enumeration.
-    """
     await service.forgot_password(data.email)
 
 
@@ -178,11 +159,6 @@ async def reset_password(
     data: ResetPasswordRequest,
     service: AuthService = Depends(get_auth_service),
 ) -> None:
-    """
-    Complete password reset using the token sent via email.
-
-    Token is single-use and expires after 1 hour.
-    """
     await service.reset_password(data.token, data.new_password)
 
 
@@ -199,7 +175,27 @@ async def get_me(
     current_user: User = Depends(get_current_user),
     service: AuthService = Depends(get_auth_service),
 ) -> MeResponse:
-    """
-    Return the currently authenticated user's profile.
-    """
     return await service.get_me(current_user)
+
+
+# ---------------------------------------------------------------------------
+# Accept Invitation — no auth required, token is the credential
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/invitations/{token}/accept",
+    response_model=OrganizationResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Accept an organization invitation",
+)
+async def accept_invitation(
+    token: str,
+    service: OrganizationService = Depends(get_org_service),
+) -> OrganizationResponse:
+    """
+    Accept an organization invitation by token.
+
+    No Authorization header required. The invitation token is the credential.
+    The invited user must already be registered with the same email.
+    """
+    return await service.accept_invitation_by_token(token)
