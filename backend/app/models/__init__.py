@@ -16,6 +16,7 @@ from app.models.label import Label, TaskLabel
 from app.models.task import Task, TaskPriority, TaskType
 from app.models.comment import Comment
 from app.models.activity_log import ActivityLog
+from app.models.sprint import Sprint, SprintStatus
 
 __all__ = [
     "Base",
@@ -37,4 +38,6 @@ __all__ = [
     "TaskType",
     "Comment",
     "ActivityLog",
+    "Sprint",
+    "SprintStatus",
 ]

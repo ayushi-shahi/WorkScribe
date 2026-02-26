@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from app.models.task import Task
     from app.models.task_status import TaskStatus
     from app.models.user import User
+    from app.models.sprint import Sprint
 
 
 class ProjectType(str, enum.Enum):
@@ -58,6 +59,9 @@ class Project(Base, UUIDMixin, TimestampMixin):
     )
     labels: Mapped[list[Label]] = relationship(
         "Label", back_populates="project", cascade="all, delete-orphan"
+    )
+    sprints: Mapped[list[Sprint]] = relationship(
+    "Sprint", back_populates="project", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

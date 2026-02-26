@@ -31,6 +31,8 @@ from app.models import (  # noqa: F401
     TaskType,
     Comment,
     ActivityLog,
+    Sprint,
+    SprintStatus,
 )
 
 config = context.config
