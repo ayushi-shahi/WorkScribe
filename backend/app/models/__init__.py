@@ -17,6 +17,7 @@ from app.models.task import Task, TaskPriority, TaskType
 from app.models.comment import Comment
 from app.models.activity_log import ActivityLog
 from app.models.sprint import Sprint, SprintStatus
+from app.models.wiki import WikiSpace, Page
 
 __all__ = [
     "Base",
@@ -40,4 +41,6 @@ __all__ = [
     "ActivityLog",
     "Sprint",
     "SprintStatus",
+    "WikiSpace",
+    "Page",
 ]

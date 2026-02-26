@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from app.models.invitation import Invitation
     from app.models.member import OrgMember
     from app.models.project import Project
+    from app.models.wiki import WikiSpace
 
 
 class Organization(Base, UUIDMixin, TimestampMixin):
@@ -35,6 +36,9 @@ class Organization(Base, UUIDMixin, TimestampMixin):
     projects: Mapped[list[Project]] = relationship(
         "Project", back_populates="organization", cascade="all, delete-orphan"
     )
+    wiki_spaces: Mapped[list["WikiSpace"]] = relationship(
+    "WikiSpace", back_populates="org", cascade="all, delete-orphan"
+)
 
     def __repr__(self) -> str:
         return f"<Organization id={self.id} slug={self.slug!r}>"

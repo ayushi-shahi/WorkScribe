@@ -90,7 +90,7 @@ app.include_router(organizations.router, prefix="/api/v1/organizations", tags=["
 app.include_router(projects.router, prefix="/api/v1", tags=["Projects"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["Tasks"])
 app.include_router(sprints.router, prefix="/api/v1", tags=["Sprints"])
-# app.include_router(pages.router, prefix="/api/v1/wiki", tags=["Wiki"])
+app.include_router(pages.router, prefix="/api/v1", tags=["Wiki"])
 # app.include_router(search.router, prefix="/api/v1", tags=["Search"])
 # app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["Notifications"])
 # app.include_router(websocket.router, prefix="/api/v1", tags=["WebSocket"])
