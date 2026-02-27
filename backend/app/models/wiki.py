@@ -15,6 +15,7 @@ from app.models.base import Base
 
 if TYPE_CHECKING:
     from app.models.organization import Organization
+    from app.models.task_page_link import TaskPageLink
     from app.models.user import User
 
 
@@ -107,3 +108,6 @@ class Page(Base):
     )
     creator: Mapped[User | None] = relationship("User", foreign_keys=[created_by])
     last_editor: Mapped[User | None] = relationship("User", foreign_keys=[last_edited_by])
+    task_links: Mapped[list[TaskPageLink]] = relationship(
+        "TaskPageLink", back_populates="page", cascade="all, delete-orphan"
+    )

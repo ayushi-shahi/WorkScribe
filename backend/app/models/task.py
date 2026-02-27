@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from app.models.comment import Comment
     from app.models.label import TaskLabel
     from app.models.project import Project
+    from app.models.task_page_link import TaskPageLink
     from app.models.task_status import TaskStatus
     from app.models.user import User
 
@@ -127,6 +128,9 @@ class Task(Base, UUIDMixin):
     )
     activity_logs: Mapped[list[ActivityLog]] = relationship(
         "ActivityLog", back_populates="task", cascade="all, delete-orphan"
+    )
+    page_links: Mapped[list[TaskPageLink]] = relationship(
+        "TaskPageLink", back_populates="task", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

@@ -20,7 +20,7 @@ from app.models.comment import Comment
 from app.models.label import Label, TaskLabel
 from app.models.project import Project
 from app.models.task import Task, TaskPriority, TaskType
-from app.models.task_status import TaskStatus
+from app.models.task_status import TaskStatus, StatusCategory
 from app.models.user import User
 from app.schemas.task import (
     ActivityListResponse,
@@ -39,6 +39,59 @@ from app.schemas.task import (
     TaskUpdateRequest,
     UserSummaryResponse,
 )
+
+
+def _queue_notification(
+    org_id: UUID,
+    user_id: UUID,
+    notification_type: str,
+    title: str,
+    body: str | None,
+    entity_type: str,
+    entity_id: UUID,
+) -> None:
+    """
+    Fire-and-forget: enqueue a Celery notification task.
+    Import is deferred to avoid circular imports at module load.
+    """
+    from app.workers.notification_tasks import dispatch_notification
+    dispatch_notification.delay(
+        org_id=str(org_id),
+        user_id=str(user_id),
+        notification_type=notification_type,
+        title=title,
+        body=body,
+        entity_type=entity_type,
+        entity_id=str(entity_id),
+    )
+
+
+def _extract_mention_user_ids(body_json: dict[str, Any]) -> list[str]:
+    """
+    Recursively walk a Tiptap/ProseMirror JSON document and collect
+    all user IDs referenced by mention nodes.
+
+    Mention node structure:
+    {
+        "type": "mention",
+        "attrs": {"id": "<user_id>", "label": "Display Name"}
+    }
+    """
+    user_ids: list[str] = []
+
+    def walk(node: Any) -> None:
+        if not isinstance(node, dict):
+            return
+        if node.get("type") == "mention":
+            attrs = node.get("attrs", {})
+            uid = attrs.get("id")
+            if uid:
+                user_ids.append(uid)
+        for child in node.get("content", []):
+            walk(child)
+
+    walk(body_json)
+    return user_ids
 
 
 class TaskService:
@@ -67,7 +120,6 @@ class TaskService:
     ) -> TaskListResponse:
         """List tasks for a project with optional filters. Scoped by org_id."""
 
-        # Verify project belongs to org
         await self._get_project(project_id, org_id)
 
         stmt = (
@@ -88,16 +140,13 @@ class TaskService:
         if search is not None:
             stmt = stmt.where(Task.title.ilike(f"%{search}%"))
 
-        # Total count
         count_stmt = select(func.count()).select_from(stmt.subquery())
         total = (await self.db.execute(count_stmt)).scalar_one()
 
-        # Paginated results
         stmt = stmt.order_by(Task.position, Task.created_at).offset(skip).limit(limit)
         result = await self.db.execute(stmt)
         tasks = list(result.scalars().all())
 
-        # Load labels for all tasks in one query
         task_ids = [t.id for t in tasks]
         labels_by_task = await self._load_labels_for_tasks(task_ids)
 
@@ -142,18 +191,15 @@ class TaskService:
 
         Uses SELECT ... FOR UPDATE on project_task_counters to safely
         increment the task number without race conditions.
-        """
-        # Verify project belongs to org
-        project = await self._get_project(project_id, org_id)
 
-        # Verify status belongs to project
+        Dispatches TASK_ASSIGNED notification if assignee_id is set.
+        """
+        project = await self._get_project(project_id, org_id)
         await self._get_status(data.status_id, project_id, org_id)
 
-        # Verify assignee is in the org (if provided)
         if data.assignee_id is not None:
             await self._verify_user_in_org(data.assignee_id, org_id)
 
-        # Atomically increment task counter using FOR UPDATE
         from sqlalchemy import text
         counter_result = await self.db.execute(
             text(
@@ -165,7 +211,6 @@ class TaskService:
         row = counter_result.fetchone()
 
         if row is None:
-            # Insert counter if missing (shouldn't happen but defensive)
             await self.db.execute(
                 text(
                     "INSERT INTO project_task_counters (project_id, last_number) "
@@ -185,7 +230,6 @@ class TaskService:
             {"n": next_number, "project_id": str(project_id)},
         )
 
-        # Determine position (append to end of status column)
         max_pos_result = await self.db.execute(
             select(func.max(Task.position)).where(
                 Task.project_id == project_id,
@@ -195,7 +239,6 @@ class TaskService:
         max_pos = max_pos_result.scalar() or 0
         position = max_pos + 1000
 
-        # Create task
         task = Task(
             org_id=org_id,
             project_id=project_id,
@@ -215,11 +258,9 @@ class TaskService:
         self.db.add(task)
         await self.db.flush()
 
-        # Attach labels
         if data.label_ids:
             await self._set_task_labels(task.id, data.label_ids, project_id, org_id)
 
-        # Log activity
         await self._log_activity(
             org_id=org_id,
             task_id=task.id,
@@ -231,6 +272,19 @@ class TaskService:
         )
 
         await self.db.flush()
+
+        # Notify assignee if assigned at creation (and not assigning to self)
+        if data.assignee_id is not None and data.assignee_id != reporter.id:
+            _queue_notification(
+                org_id=org_id,
+                user_id=data.assignee_id,
+                notification_type="TASK_ASSIGNED",
+                title=f"You were assigned {project.key}-{next_number}",
+                body=data.title,
+                entity_type="task",
+                entity_id=task.id,
+            )
+
         return await self.get_task(task.id, org_id)
 
     # -----------------------------------------------------------------------
@@ -244,7 +298,6 @@ class TaskService:
         labels = await self._load_labels_for_tasks([task.id])
         task_labels = labels.get(task.id, [])
 
-        # Load assignee
         assignee = None
         if task.assignee_id is not None:
             assignee_result = await self.db.execute(
@@ -259,7 +312,6 @@ class TaskService:
                     email=assignee_user.email,
                 )
 
-        # Load reporter
         reporter_result = await self.db.execute(
             select(User).where(User.id == task.reporter_id)
         )
@@ -273,13 +325,11 @@ class TaskService:
                 email=reporter_user.email,
             )
 
-        # Count subtasks
         subtask_count_result = await self.db.execute(
             select(func.count(Task.id)).where(Task.parent_task_id == task.id)
         )
         subtask_count = subtask_count_result.scalar_one()
 
-        # Count comments
         comment_count_result = await self.db.execute(
             select(func.count(Comment.id)).where(Comment.task_id == task.id)
         )
@@ -325,11 +375,15 @@ class TaskService:
         Partially update a task.
 
         Logs every changed field to activity_log with old → new values.
+        Dispatches TASK_ASSIGNED on assignee change.
+        Dispatches TASK_DONE when status moves to a 'done' category.
         """
         task = await self._get_task(task_id, org_id)
-
-        # Track changes for activity log
         changes: dict[str, dict[str, Any]] = {}
+
+        # Track old values for notification decisions
+        old_assignee_id = task.assignee_id
+        old_status_id = task.status_id
 
         if data.title is not None and data.title != task.title:
             changes["title"] = {"old": task.title, "new": data.title}
@@ -385,13 +439,11 @@ class TaskService:
         if data.parent_task_id != task.parent_task_id and "parent_task_id" in data.model_fields_set:
             task.parent_task_id = data.parent_task_id
 
-        # Update labels
         if data.label_ids is not None:
             await self._set_task_labels(task.id, data.label_ids, task.project_id, org_id)
 
         await self.db.flush()
 
-        # Log each changed field
         for field, vals in changes.items():
             await self._log_activity(
                 org_id=org_id,
@@ -405,6 +457,46 @@ class TaskService:
             )
 
         await self.db.flush()
+
+        # Notify new assignee (if changed and not assigning to self)
+        if (
+            data.assignee_id is not None
+            and data.assignee_id != old_assignee_id
+            and data.assignee_id != actor.id
+        ):
+            project = await self._get_project(task.project_id, org_id)
+            _queue_notification(
+                org_id=org_id,
+                user_id=data.assignee_id,
+                notification_type="TASK_ASSIGNED",
+                title=f"You were assigned {project.key}-{task.number}",
+                body=task.title,
+                entity_type="task",
+                entity_id=task.id,
+            )
+
+        # Notify reporter when status moves to 'done' category
+        # (only if reporter is not the actor making the change)
+        if (
+            data.status_id is not None
+            and data.status_id != old_status_id
+            and task.reporter_id != actor.id
+        ):
+            new_status = await self.db.scalar(
+                select(TaskStatus).where(TaskStatus.id == data.status_id)
+            )
+            if new_status and new_status.category == StatusCategory.done:
+                project = await self._get_project(task.project_id, org_id)
+                _queue_notification(
+                    org_id=org_id,
+                    user_id=task.reporter_id,
+                    notification_type="TASK_DONE",
+                    title=f"{project.key}-{task.number} moved to Done",
+                    body=task.title,
+                    entity_type="task",
+                    entity_id=task.id,
+                )
+
         return await self.get_task(task.id, org_id)
 
     # -----------------------------------------------------------------------
@@ -441,18 +533,20 @@ class TaskService:
         data: TaskMoveRequest,
         actor: User,
     ) -> TaskDetailResponse:
-        """Update task status and position in one call."""
+        """
+        Update task status and position in one call.
+        Dispatches TASK_DONE if moved to a done-category status.
+        """
         task = await self._get_task(task_id, org_id)
+        old_status_id = task.status_id
 
-        old_status = str(task.status_id)
         await self._get_status(data.status_id, task.project_id, org_id)
-
         task.status_id = data.status_id
         task.position = data.position
 
         await self.db.flush()
 
-        if old_status != str(data.status_id):
+        if old_status_id != data.status_id:
             await self._log_activity(
                 org_id=org_id,
                 task_id=task.id,
@@ -460,10 +554,27 @@ class TaskService:
                 action="FIELD_UPDATED",
                 entity_type="task",
                 entity_id=task.id,
-                old_value={"status_id": old_status},
+                old_value={"status_id": str(old_status_id)},
                 new_value={"status_id": str(data.status_id)},
             )
             await self.db.flush()
+
+            # Notify reporter if moved to done (and reporter != actor)
+            if task.reporter_id != actor.id:
+                new_status = await self.db.scalar(
+                    select(TaskStatus).where(TaskStatus.id == data.status_id)
+                )
+                if new_status and new_status.category == StatusCategory.done:
+                    project = await self._get_project(task.project_id, org_id)
+                    _queue_notification(
+                        org_id=org_id,
+                        user_id=task.reporter_id,
+                        notification_type="TASK_DONE",
+                        title=f"{project.key}-{task.number} moved to Done",
+                        body=task.title,
+                        entity_type="task",
+                        entity_id=task.id,
+                    )
 
         return await self.get_task(task.id, org_id)
 
@@ -502,7 +613,6 @@ class TaskService:
         )
         comments = list(result.scalars().all())
 
-        # Load authors
         author_ids = list({c.author_id for c in comments})
         authors: dict[UUID, User] = {}
         if author_ids:
@@ -540,8 +650,11 @@ class TaskService:
         data: CommentCreateRequest,
         author: User,
     ) -> CommentResponse:
-        """Create a comment on a task."""
-        await self._get_task(task_id, org_id)
+        """
+        Create a comment on a task.
+        Parses @mentions from body_json and dispatches MENTION notifications.
+        """
+        task = await self._get_task(task_id, org_id)
 
         comment = Comment(
             task_id=task_id,
@@ -550,6 +663,28 @@ class TaskService:
         )
         self.db.add(comment)
         await self.db.flush()
+
+        # Dispatch MENTION notifications for each mentioned user
+        mention_user_ids = _extract_mention_user_ids(data.body_json)
+        for uid_str in set(mention_user_ids):
+            try:
+                uid = UUID(uid_str)
+            except ValueError:
+                continue
+            # Don't notify the author if they mention themselves
+            if uid == author.id:
+                continue
+            # Load project key for notification title
+            project = await self._get_project(task.project_id, org_id)
+            _queue_notification(
+                org_id=org_id,
+                user_id=uid,
+                notification_type="MENTION",
+                title=f"{author.display_name} mentioned you in {project.key}-{task.number}",
+                body=task.title,
+                entity_type="task",
+                entity_id=task_id,
+            )
 
         return CommentResponse(
             id=comment.id,
@@ -645,7 +780,6 @@ class TaskService:
         )
         logs = list(result.scalars().all())
 
-        # Load actors
         actor_ids = list({log.actor_id for log in logs})
         actors: dict[UUID, User] = {}
         if actor_ids:
@@ -790,14 +924,12 @@ class TaskService:
         org_id: UUID,
     ) -> None:
         """Replace all labels on a task with the given label_ids."""
-        # Delete existing
         existing = await self.db.execute(
             select(TaskLabel).where(TaskLabel.task_id == task_id)
         )
         for tl in existing.scalars().all():
             await self.db.delete(tl)
 
-        # Validate and attach new labels
         for label_id in label_ids:
             label_result = await self.db.execute(
                 select(Label).where(

@@ -1,7 +1,6 @@
 """
 User ORM model.
 """
-
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -16,6 +15,7 @@ if TYPE_CHECKING:
     from app.models.comment import Comment
     from app.models.invitation import Invitation
     from app.models.member import OrgMember
+    from app.models.notification import Notification
     from app.models.project import Project
     from app.models.task import Task
 
@@ -57,6 +57,9 @@ class User(Base, UUIDMixin, TimestampMixin):
     )
     activity_logs: Mapped[list[ActivityLog]] = relationship(
         "ActivityLog", back_populates="actor"
+    )
+    notifications: Mapped[list[Notification]] = relationship(
+        "Notification", back_populates="user", cascade="all, delete-orphan"
     )
 
     def __repr__(self) -> str:

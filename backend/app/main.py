@@ -1,9 +1,7 @@
 """
 FastAPI application entry point.
-
 Configures middleware, routes, and exception handlers.
 """
-
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -83,7 +81,17 @@ async def root() -> dict[str, str]:
     }
 
 
-from app.routers import auth, organizations, projects, tasks, sprints, pages, search, notifications, websocket
+from app.routers import (  # noqa: E402
+    auth,
+    notifications,
+    organizations,
+    pages,
+    projects,
+    sprints,
+    tasks,
+    websocket,
+)
+from app.routers import task_page_links  # noqa: E402
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(organizations.router, prefix="/api/v1/organizations", tags=["Organizations"])
@@ -91,6 +99,6 @@ app.include_router(projects.router, prefix="/api/v1", tags=["Projects"])
 app.include_router(tasks.router, prefix="/api/v1", tags=["Tasks"])
 app.include_router(sprints.router, prefix="/api/v1", tags=["Sprints"])
 app.include_router(pages.router, prefix="/api/v1", tags=["Wiki"])
-# app.include_router(search.router, prefix="/api/v1", tags=["Search"])
-# app.include_router(notifications.router, prefix="/api/v1/notifications", tags=["Notifications"])
-# app.include_router(websocket.router, prefix="/api/v1", tags=["WebSocket"])
+app.include_router(task_page_links.router, prefix="/api/v1", tags=["Links"])
+app.include_router(notifications.router, prefix="/api/v1", tags=["Notifications"])
+app.include_router(websocket.router, prefix="/api/v1", tags=["WebSocket"])
