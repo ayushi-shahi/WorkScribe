@@ -1,7 +1,7 @@
 # WorkScribe — Backend Progress
 
-**Last Updated:** 2026-02-27
-**Latest Commit:** `a5cd8ab` — feat(wiki): implement wiki spaces and pages backend (Phase 5)
+**Last Updated:** 2026-02-28
+**Latest Commit:** `feat: add search endpoint for tasks and pages (Phase 6.5)`
 **Alembic Head:** `d4e5f6a1b2c3` (create_notifications_table)
 **API:** `http://localhost:8001`
 
@@ -17,10 +17,10 @@
 | 2.3   | Projects + Tasks            | ✅ Complete & Tested | —          |
 | 2.4   | Sprints                     | ✅ Complete & Tested | `47c2c7e` |
 | 5     | Wiki / Pages                | ✅ Complete & Tested | `a5cd8ab` |
-| 6.1   | Task ↔ Doc Linking         | ✅ Complete & Tested | uncommitted |
-| 6.2   | Notifications DB + REST API | ✅ Complete & Tested | uncommitted |
-| 6.3   | Celery dispatch + WebSocket | ✅ Complete & Tested | uncommitted |
-| 6.5   | Search                      | 🔜 Not Started       | —          |
+| 6.1   | Task ↔ Doc Linking         | ✅ Complete & Tested | committed   |
+| 6.2   | Notifications DB + REST API | ✅ Complete & Tested | committed   |
+| 6.3   | Celery dispatch + WebSocket | ✅ Complete & Tested | committed   |
+| 6.5   | Search                      | ✅ Complete & Tested | committed   |
 | 7.1   | Dashboard                   | 🔜 Not Started       | —          |
 | 7.2   | Security Audit              | 🔜 Not Started       | —          |
 
@@ -166,9 +166,6 @@
 | PATCH  | `/api/v1/tasks/bulk-positions`                     | Batch update positions           |
 | GET    | `/api/v1/tasks/{id}/comments`                      | List comments                    |
 | POST   | `/api/v1/tasks/{id}/comments`                      | Add comment                      |
-| PATCH  | `/api/v1/tasks/{id}/comments/{comment_id}`         | Edit comment                     |
-| DELETE | `/api/v1/tasks/{id}/comments/{comment_id}`         | Delete comment                   |
-| GET    | `/api/v1/tasks/{id}/activity`                      | Get activity log                 |
 
 ---
 
@@ -178,35 +175,31 @@
 
 ### Migrations
 
-| #   | Revision         | Description                                                         |
-| --- | ---------------- | ------------------------------------------------------------------- |
-| 013 | `b4fb5d09bb90` | Create sprints table (sprint_status enum: planned/active/completed) |
-| 014 | `70e071b82b25` | Add sprint_id FK constraint to tasks table                          |
+| #   | Revision         | Description            |
+| --- | ---------------- | ---------------------- |
+| 013 | `b4fb5d09bb90` | Create sprints table   |
+| 014 | `70e071b82b25` | Add sprint_id to tasks |
 
 ### Files
 
 * `app/models/sprint.py` — Sprint, SprintStatus enum
-* `app/schemas/sprint.py` — SprintCreateRequest, SprintUpdateRequest, SprintCompleteRequest, SprintResponse, SprintListResponse
+* `app/schemas/sprint.py`
 * `app/services/sprint_service.py`
 * `app/routers/sprints.py`
 
-### Business Logic
+### Endpoints Tested ✅
 
-* One active sprint per project enforced
-* Complete sprint: moves incomplete tasks to backlog OR another sprint
-* Delete only allowed on planned sprints
-* Org scoping via user membership for slug-less endpoints (`/sprints/{id}/start`, etc.)
-
-### Endpoints Tested ✅ (13/13 tests passed)
-
-| Method | Path                                                   | Description           |
-| ------ | ------------------------------------------------------ | --------------------- |
-| GET    | `/api/v1/organizations/{slug}/projects/{id}/sprints` | List sprints          |
-| POST   | `/api/v1/organizations/{slug}/projects/{id}/sprints` | Create sprint         |
-| PATCH  | `/api/v1/sprints/{id}`                               | Update sprint         |
-| POST   | `/api/v1/sprints/{id}/start`                         | Start sprint          |
-| POST   | `/api/v1/sprints/{id}/complete`                      | Complete sprint       |
-| DELETE | `/api/v1/sprints/{id}`                               | Delete planned sprint |
+| Method | Path                                                   | Description                      |
+| ------ | ------------------------------------------------------ | -------------------------------- |
+| POST   | `/api/v1/organizations/{slug}/projects/{id}/sprints` | Create sprint                    |
+| GET    | `/api/v1/organizations/{slug}/projects/{id}/sprints` | List sprints                     |
+| GET    | `/api/v1/sprints/{id}`                               | Get sprint detail                |
+| PATCH  | `/api/v1/sprints/{id}`                               | Update sprint                    |
+| POST   | `/api/v1/sprints/{id}/start`                         | Start sprint (sets dates/status) |
+| POST   | `/api/v1/sprints/{id}/complete`                      | Complete sprint                  |
+| DELETE | `/api/v1/sprints/{id}`                               | Delete sprint                    |
+| POST   | `/api/v1/sprints/{id}/tasks`                         | Add task to sprint               |
+| DELETE | `/api/v1/sprints/{id}/tasks/{task_id}`               | Remove task from sprint          |
 
 ---
 
@@ -216,59 +209,53 @@
 
 ### Migrations
 
-| #   | Revision         | Description                                  |
-| --- | ---------------- | -------------------------------------------- |
-| 015 | `a1b2c3d4e5f6` | Create wiki_spaces table                     |
-| 016 | `b2c3d4e5f6a1` | Create pages table (self-ref parent_page_id) |
+| #   | Revision         | Description        |
+| --- | ---------------- | ------------------ |
+| 015 | `a1b2c3d4e5f6` | Create wiki_spaces |
+| 016 | `b2c3d4e5f6a1` | Create pages       |
+
+### ORM Models
+
+* `app/models/wiki.py` — WikiSpace, Page
 
 ### Files
 
-* `app/models/wiki.py` — WikiSpace, Page models
-* `app/schemas/wiki.py` — all wiki schemas including PageTreeItem (recursive)
+* `app/schemas/wiki.py`
 * `app/services/wiki_service.py`
 * `app/routers/pages.py`
 
-### Endpoints Tested ✅ (15/15 tests passed)
+### Endpoints Tested ✅
 
-| Method | Path                                         | Description                    |
-| ------ | -------------------------------------------- | ------------------------------ |
-| GET    | `/api/v1/organizations/{slug}/wiki/spaces` | List spaces                    |
-| POST   | `/api/v1/organizations/{slug}/wiki/spaces` | Create space                   |
-| PATCH  | `/api/v1/wiki/spaces/{id}`                 | Update space                   |
-| DELETE | `/api/v1/wiki/spaces/{id}`                 | Delete space (Owner/Admin)     |
-| GET    | `/api/v1/wiki/spaces/{id}/pages`           | List pages (tree)              |
-| POST   | `/api/v1/wiki/spaces/{id}/pages`           | Create page                    |
-| GET    | `/api/v1/wiki/pages/{id}`                  | Get page detail                |
-| PATCH  | `/api/v1/wiki/pages/{id}`                  | Update page content/title      |
-| POST   | `/api/v1/wiki/pages/{id}/move`             | Move page in tree              |
-| DELETE | `/api/v1/wiki/pages/{id}`                  | Soft delete page + descendants |
+| Method | Path                                              | Description          |
+| ------ | ------------------------------------------------- | -------------------- |
+| POST   | `/api/v1/organizations/{slug}/wiki/spaces`      | Create wiki space    |
+| GET    | `/api/v1/organizations/{slug}/wiki/spaces`      | List spaces          |
+| GET    | `/api/v1/organizations/{slug}/wiki/spaces/{id}` | Get space detail     |
+| POST   | `/api/v1/wiki/spaces/{id}/pages`                | Create page          |
+| GET    | `/api/v1/wiki/spaces/{id}/pages`                | List pages in space  |
+| GET    | `/api/v1/wiki/pages/{id}`                       | Get page detail      |
+| PATCH  | `/api/v1/wiki/pages/{id}`                       | Update page          |
+| DELETE | `/api/v1/wiki/pages/{id}`                       | Soft delete page     |
+| GET    | `/api/v1/wiki/pages/{id}/history`               | Page version history |
 
 ---
 
 ## Phase 6.1 — Task ↔ Page Linking ✅
 
-**Commit:** uncommitted (ready to commit)
+**Commit:** committed
 
 ### Migrations
 
-| #   | Revision         | Description                  |
-| --- | ---------------- | ---------------------------- |
-| 017 | `c3d4e5f6a1b2` | Create task_page_links table |
+| #   | Revision         | Description            |
+| --- | ---------------- | ---------------------- |
+| 017 | `c3d4e5f6a1b2` | Create task_page_links |
 
 ### Files
 
-* `app/models/task_page_link.py` — TaskPageLink model
-* `app/models/task.py` — added `page_links` relationship
-* `app/models/wiki.py` — added `task_links` relationship to Page
-* `app/schemas/task_page_link.py` — all link schemas
+* `app/models/task_page_link.py` — TaskPageLink
+* `app/schemas/task_page_link.py`
 * `app/services/task_page_link_service.py`
 * `app/routers/task_page_links.py`
-
-### Business Logic
-
-* UNIQUE constraint on `(task_id, page_id)` — no duplicate links
-* Cross-org protection: task and page must belong to same org
-* Activity log: `DOC_LINKED` / `DOC_UNLINKED` recorded on every operation
 
 ### Endpoints Tested ✅
 
@@ -290,7 +277,7 @@
 
 ## Phase 6.2 — Notifications Database + REST API ✅
 
-**Commit:** uncommitted (ready to commit)
+**Commit:** committed
 
 ### Migrations
 
@@ -324,12 +311,12 @@
 
 ## Phase 6.3 — Celery Dispatch + WebSocket ✅
 
-**Commit:** uncommitted (ready to commit)
+**Commit:** committed
 
 ### Files
 
 * `app/core/websocket.py` — `ConnectionManager` singleton (in-memory, single-server MVP)
-* `app/workers/notification_tasks.py` — `dispatch_notification` Celery task (full implementation replacing placeholder)
+* `app/workers/notification_tasks.py` — `dispatch_notification` Celery task
 * `app/routers/websocket.py` — `WS /api/v1/ws?token={jwt}` endpoint
 * `app/services/task_service.py` — wired notification dispatch into 3 triggers
 
@@ -353,27 +340,49 @@
 
 * `asyncio.run()` in Celery forked workers causes "Future attached to different loop" error
 * Fix: always create `asyncio.new_event_loop()` + `asyncio.set_event_loop()` per task execution
+* `async_engine.sync_engine.dispose()` called BEFORE loop creation to avoid inherited closed loop
 
-### Tested ✅
+---
 
-| Trigger                            | Recipient                                 | Result |
-| ---------------------------------- | ----------------------------------------- | ------ |
-| Create task with assignee          | member@example.com gets `TASK_ASSIGNED` | ✅     |
-| Move task to Done (different user) | reporter gets `TASK_DONE`               | ✅     |
-| Post comment with @mention         | mentioned user gets `MENTION`           | ✅     |
+## Phase 6.5 — Search ✅
+
+**Commit:** committed
+
+### Files
+
+* `app/services/search_service.py` — ILIKE search across tasks and pages scoped by org_id
+* `app/routers/search.py` — search router
+* `app/main.py` — search router registered
+
+### Endpoint Tested ✅
+
+| Method | Path                                             | Description                       |
+| ------ | ------------------------------------------------ | --------------------------------- |
+| GET    | `/api/v1/organizations/{slug}/search?q=&type=` | Search tasks and pages within org |
+
+### Behavior
+
+* `q` required, min 1 char, max 200 chars — empty q returns 422
+* `type` optional — `task` or `page` only, invalid value returns 422
+* No `type` returns both tasks and pages mixed
+* Tasks: searches `title` ILIKE, excludes archived projects, returns `project_key`, `task_number`, `status`
+* Pages: searches `title` ILIKE, excludes soft-deleted pages, returns `space_name`
+* Results sorted: exact title matches first, then by `updated_at` desc
+* Scoped by `org_id` — cross-org access blocked by `get_org_member` dependency
+* Unauthenticated → 401, non-existent org → 404
+
+### Important Note on `get_org_member`
+
+`get_org_member` returns `tuple[Organization, OrgMember]` — always unpack as `org, member = org_member` in router. Do NOT type hint as `OrgMember` directly.
 
 ---
 
 ## Remaining Work
 
-### Phase 6.5 — Search
-
-* `GET /api/v1/organizations/{slug}/search?q=` — ILIKE search across task titles, page titles, comments
-
 ### Phase 7.1 — Dashboard
 
-* `GET /api/v1/organizations/{slug}/activity` — org-level activity feed
-* `GET /api/v1/organizations/{slug}/dashboard` — summary stats (open tasks, sprints, recent pages)
+* `GET /api/v1/organizations/{slug}/activity` — org-level activity feed (last 50 entries)
+* `GET /api/v1/organizations/{slug}/dashboard` — summary stats (open tasks count, active sprints, recent pages, unread notifications count)
 
 ### Phase 7.2 — Security Audit
 
@@ -419,6 +428,7 @@
 * Migrations use raw `op.execute()` SQL to avoid SQLAlchemy enum conflicts
 * Slug-less endpoints (`/tasks/{id}`, `/sprints/{id}`, `/wiki/pages/{id}`) use `get_current_user` + membership lookup in service
 * Slug endpoints (`/organizations/{slug}/...`) use `get_org_member` or `require_role` dependency
+* `get_org_member` returns `tuple[Organization, OrgMember]` — unpack as `org, member = org_member`
 * Soft delete pattern used for: projects (is_archived), pages (is_deleted)
 * All errors return structured JSON: `{"code": "ERROR_CODE", "message": "..."}`
 * Celery tasks always create `asyncio.new_event_loop()` — never use `asyncio.run()` in forked workers
@@ -438,9 +448,13 @@
 | Resource                 | ID                                       |
 | ------------------------ | ---------------------------------------- |
 | Org (test-org)           | `2ef91448-8d65-4830-ac79-b612dd52a251` |
-| Project (WEB)            | `37cbe6ba-e4ec-440e-a0e7-4b20cfebff97` |
-| Status: To Do            | `7b527734-ac36-427d-8b46-8dfae0a8b4af` |
-| Status: In Progress      | `bb6698d1-bef9-45b1-a910-1f2c7bac6b8f` |
-| Status: Done             | `1cef3657-8c33-4a26-89c0-6ec19b227941` |
+| Project (WEB, archived)  | `37cbe6ba-e4ec-440e-a0e7-4b20cfebff97` |
+| Project (APP, active)    | `f2e0986e-f09c-4cb8-8b84-45ef711c8133` |
+| Status WEB: To Do        | `7b527734-ac36-427d-8b46-8dfae0a8b4af` |
+| Status WEB: In Progress  | `bb6698d1-bef9-45b1-a910-1f2c7bac6b8f` |
+| Status WEB: Done         | `1cef3657-8c33-4a26-89c0-6ec19b227941` |
+| Status APP: To Do        | `4b5c2923-1392-406a-a9b5-b7ca8ca821d9` |
+| Status APP: In Progress  | `88da0495-ffe0-49bd-ba74-ba2a7aefa77d` |
+| Status APP: Done         | `b4fa2b9c-f42b-4530-a5fc-24d1e0dcbe77` |
 | User: test@example.com   | `5343fc4f-1621-408d-9b5a-758b43236cdf` |
 | User: member@example.com | `b84c9a6b-d13a-48b4-920f-3c2c44870d7b` |
