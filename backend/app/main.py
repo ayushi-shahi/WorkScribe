@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
-
+from app.routers.search import router as search_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
@@ -102,3 +102,4 @@ app.include_router(pages.router, prefix="/api/v1", tags=["Wiki"])
 app.include_router(task_page_links.router, prefix="/api/v1", tags=["Links"])
 app.include_router(notifications.router, prefix="/api/v1", tags=["Notifications"])
 app.include_router(websocket.router, prefix="/api/v1", tags=["WebSocket"])
+app.include_router(search_router, prefix="/api/v1")

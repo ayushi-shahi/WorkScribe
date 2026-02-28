@@ -540,7 +540,7 @@ class TaskService:
         task = await self._get_task(task_id, org_id)
         old_status_id = task.status_id
 
-        await self._get_status(data.status_id, task.project_id, org_id)
+        new_status = await self._get_status(data.status_id, task.project_id, org_id)
         task.status_id = data.status_id
         task.position = data.position
 
@@ -559,12 +559,9 @@ class TaskService:
             )
             await self.db.flush()
 
-            # Notify reporter if moved to done (and reporter != actor)
             if task.reporter_id != actor.id:
-                new_status = await self.db.scalar(
-                    select(TaskStatus).where(TaskStatus.id == data.status_id)
-                )
-                if new_status and new_status.category == StatusCategory.done:
+                await self.db.refresh(new_status)
+                if new_status.category == StatusCategory.done:
                     project = await self._get_project(task.project_id, org_id)
                     _queue_notification(
                         org_id=org_id,

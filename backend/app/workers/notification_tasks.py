@@ -37,6 +37,9 @@ def dispatch_notification(
     try:
         # Always create a fresh event loop — avoids "attached to a different loop"
         # error that occurs when Celery forks workers that inherit a closed loop.
+        from app.core.database import async_engine
+        async_engine.sync_engine.dispose() 
+        
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
@@ -69,11 +72,12 @@ async def _create_and_dispatch(
     """Async helper: write to DB then push via WebSocket."""
     import uuid
 
-    from app.core.database import AsyncSessionLocal
+    from app.core.database import AsyncSessionLocal, async_engine
     from app.core.websocket import manager
     from app.models.notification import NotificationType
     from app.schemas.notification import NotificationCreate
     from app.services.notification_service import NotificationService
+    
 
     data = NotificationCreate(
         org_id=uuid.UUID(org_id),
