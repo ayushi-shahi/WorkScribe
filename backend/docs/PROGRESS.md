@@ -23,6 +23,7 @@
 | 6.5   | Search                      | ✅ Complete & Tested | committed   |
 | 7.1   | Dashboard                   | ✅ Complete & Tested | committed   |
 | 7.2   | Security Audit              | ✅ Complete & Tested | committed   |
+| 8.1   | Google OAuth                | 🔜 Up Next           | —          |
 
 ---
 
@@ -458,6 +459,45 @@
 
 ---
 
+## Phase 8.1 — Google OAuth 🔜 UP NEXT
+
+### Overview
+
+Allow users to sign in / register with their Google account. Uses the ID token flow — frontend sends a Google `id_token` to the backend in a single POST; backend verifies it with Google's public keys and returns a standard `TokenResponse`.
+
+### Approach
+
+* Frontend sends Google `id_token` (from `@react-oauth/google`) to backend in one POST call
+* Backend verifies token with Google's public keys using `google-auth` library
+* Backend creates or finds user by `(oauth_provider, oauth_id)`
+* If email already exists with a password account → link the Google identity to existing account
+* Returns same `TokenResponse` as standard login (access_token + refresh_token)
+* OAuth users have `password_hash = NULL` — login endpoint returns clear error if they attempt password login
+
+### Tasks
+
+| # | Task                                                                                                                                                                                       | Status |
+| - | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
+| 1 | Check Migration 005 — confirm exact columns already added (`oauth_provider`,`oauth_id`,`email_verified`, nullable `password_hash`). If missing, create Migration 019 to add them. | 🔜     |
+| 2 | Update `app/models/user.py`— add `oauth_provider`,`oauth_id`,`email_verified`fields if not present                                                                                | 🔜     |
+| 3 | Update `app/schemas/auth.py`— add `GoogleAuthRequest(id_token: str)`, update `UserRead`to include `oauth_provider`,`email_verified`                                             | 🔜     |
+| 4 | Create `app/services/oauth_service.py`—`verify_google_token(id_token)`using `google-auth`,`get_or_create_google_user(db, payload)`with account linking                            | 🔜     |
+| 5 | **POST /api/v1/auth/oauth/google**— verify id_token → get/create user → return TokenResponse. Test: valid token → JWT, invalid token → 401, existing email → linked            | 🔜     |
+
+### New Dependency
+
+* `google-auth>=2.28.0` — added to `requirements.txt`
+
+### Database Changes (if Migration 005 is incomplete)
+
+* `users.password_hash` → nullable
+* `users.oauth_provider` — `VARCHAR(20) NULL`
+* `users.oauth_id` — `VARCHAR(255) NULL`, indexed
+* `users.email_verified` — `BOOLEAN NOT NULL DEFAULT FALSE`
+* UNIQUE constraint on `(oauth_provider, oauth_id)`
+
+---
+
 ## Database Migration Chain
 
 ```
@@ -480,6 +520,7 @@
                                 → b2c3d4e5f6a1_create_pages
                                   → c3d4e5f6a1b2_create_task_page_links
                                     → d4e5f6a1b2c3_create_notifications  ← HEAD
+                                      → 019_add_google_oauth  (PENDING if needed)
 ```
 
 ---
