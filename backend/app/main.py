@@ -2,20 +2,36 @@
 FastAPI application entry point.
 Configures middleware, routes, and exception handlers.
 """
+
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
+import redis.asyncio as aioredis
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
+from app.core.rate_limit import RateLimitMiddleware
 from app.routers.search import router as search_router
+from app.routers.dashboard import router as dashboard_router
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     print(f"🚀 Starting WorkScribe API in {settings.ENVIRONMENT} mode")
+
+    # Initialise shared Redis connection for rate limiting + app use
+    app.state.redis = aioredis.from_url(
+    str(settings.REDIS_URL),
+    encoding="utf-8",
+    decode_responses=True,
+    )
+
     yield
+
+    # Graceful shutdown
+    await app.state.redis.aclose()
     print("🛑 Shutting down WorkScribe API")
 
 
@@ -29,6 +45,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ── Middleware (order matters — added last runs first) ───────────────────────
+
+app.add_middleware(RateLimitMiddleware)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -38,6 +58,7 @@ app.add_middleware(
     expose_headers=["*"],
 )
 
+# ── Exception handlers ───────────────────────────────────────────────────────
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
@@ -63,6 +84,8 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
     )
 
 
+# ── Core routes ──────────────────────────────────────────────────────────────
+
 @app.get("/health", tags=["Health"])
 async def health_check() -> dict[str, str]:
     return {
@@ -80,6 +103,8 @@ async def root() -> dict[str, str]:
         "docs": "/api/docs" if settings.DEBUG else "disabled",
     }
 
+
+# ── Routers ──────────────────────────────────────────────────────────────────
 
 from app.routers import (  # noqa: E402
     auth,
@@ -103,3 +128,4 @@ app.include_router(task_page_links.router, prefix="/api/v1", tags=["Links"])
 app.include_router(notifications.router, prefix="/api/v1", tags=["Notifications"])
 app.include_router(websocket.router, prefix="/api/v1", tags=["WebSocket"])
 app.include_router(search_router, prefix="/api/v1")
+app.include_router(dashboard_router, prefix="/api/v1")

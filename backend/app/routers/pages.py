@@ -7,7 +7,8 @@ from __future__ import annotations
 from uuid import UUID
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -15,6 +16,7 @@ from app.core.dependencies import get_current_user, get_org_member, get_redis, r
 from app.models.member import OrgMember, OrgRole
 from app.models.organization import Organization
 from app.models.user import User
+from app.models.wiki import Page, WikiSpace
 from app.schemas.wiki import (
     PageCreateRequest,
     PageListResponse,
@@ -36,6 +38,73 @@ def get_wiki_service(
     redis: aioredis.Redis = Depends(get_redis),
 ) -> WikiService:
     return WikiService(db=db, redis=redis)
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers — resolve org_id from space/page + verify membership
+# ---------------------------------------------------------------------------
+
+async def _verify_membership(
+    org_id: UUID,
+    user: User,
+    service: WikiService,
+    require_admin: bool = False,
+) -> None:
+    result = await service.db.execute(
+        select(OrgMember).where(
+            OrgMember.org_id == org_id,
+            OrgMember.user_id == user.id,
+        )
+    )
+    member = result.scalar_one_or_none()
+    if member is None:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "FORBIDDEN", "message": "Access denied"},
+        )
+    if require_admin and member.role not in (OrgRole.owner, OrgRole.admin):
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "FORBIDDEN", "message": "Owner or Admin role required"},
+        )
+
+
+async def _get_org_id_for_space(
+    space_id: UUID,
+    user: User,
+    service: WikiService,
+    require_admin: bool = False,
+) -> UUID:
+    result = await service.db.execute(
+        select(WikiSpace).where(WikiSpace.id == space_id)
+    )
+    space = result.scalar_one_or_none()
+    if space is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "SPACE_NOT_FOUND", "message": "Wiki space not found"},
+        )
+    await _verify_membership(space.org_id, user, service, require_admin)
+    return space.org_id
+
+
+async def _get_org_id_for_page(
+    page_id: UUID,
+    user: User,
+    service: WikiService,
+    require_admin: bool = False,
+) -> UUID:
+    result = await service.db.execute(
+        select(Page).where(Page.id == page_id, Page.is_deleted == False)
+    )
+    page = result.scalar_one_or_none()
+    if page is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "PAGE_NOT_FOUND", "message": "Page not found"},
+        )
+    await _verify_membership(page.org_id, user, service, require_admin)
+    return page.org_id
 
 
 # ---------------------------------------------------------------------------
@@ -194,67 +263,3 @@ async def delete_page(
     org_id = await _get_org_id_for_page(page_id, current_user, service)
     await service.delete_page(page_id, org_id)
     return {}
-
-
-# ---------------------------------------------------------------------------
-# Internal helpers — resolve org_id from space/page + verify membership
-# ---------------------------------------------------------------------------
-
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from app.models.wiki import WikiSpace, Page
-from app.models.member import OrgMember
-from fastapi import HTTPException
-
-
-async def _get_org_id_for_space(
-    space_id: UUID,
-    user: User,
-    service: WikiService,
-    require_admin: bool = False,
-) -> UUID:
-    result = await service.db.execute(
-        select(WikiSpace).where(WikiSpace.id == space_id)
-    )
-    space = result.scalar_one_or_none()
-    if space is None:
-        raise HTTPException(status_code=404, detail={"code": "SPACE_NOT_FOUND", "message": "Wiki space not found"})
-
-    await _verify_membership(space.org_id, user, service, require_admin)
-    return space.org_id
-
-
-async def _get_org_id_for_page(
-    page_id: UUID,
-    user: User,
-    service: WikiService,
-    require_admin: bool = False,
-) -> UUID:
-    result = await service.db.execute(
-        select(Page).where(Page.id == page_id, Page.is_deleted == False)
-    )
-    page = result.scalar_one_or_none()
-    if page is None:
-        raise HTTPException(status_code=404, detail={"code": "PAGE_NOT_FOUND", "message": "Page not found"})
-
-    await _verify_membership(page.org_id, user, service, require_admin)
-    return page.org_id
-
-
-async def _verify_membership(
-    org_id: UUID,
-    user: User,
-    service: WikiService,
-    require_admin: bool = False,
-) -> None:
-    result = await service.db.execute(
-        select(OrgMember).where(
-            OrgMember.org_id == org_id,
-            OrgMember.user_id == user.id,
-        )
-    )
-    member = result.scalar_one_or_none()
-    if member is None:
-        raise HTTPException(status_code=404, detail={"code": "NOT_FOUND", "message": "Not found"})
-    if require_admin and member.role not in (OrgRole.owner, OrgRole.admin):
-        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Owner or Admin role required"})

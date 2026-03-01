@@ -44,3 +44,15 @@ class ProjectResponse(BaseModel):
 class ProjectListResponse(BaseModel):
     projects: list[ProjectResponse]
     total: int
+
+
+class StatusRead(BaseModel):
+    id: UUID
+    org_id: UUID
+    project_id: UUID
+    name: str
+    category: str
+    position: int
+    color: str | None
+
+    model_config = {"from_attributes": True}

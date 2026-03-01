@@ -9,13 +9,16 @@ from __future__ import annotations
 from uuid import UUID
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_org_member, get_redis, require_role
 from app.models.member import OrgMember, OrgRole
 from app.models.organization import Organization
+from app.models.task import Task
+from app.models.member import OrgMember
 from app.models.user import User
 from app.schemas.task import (
     ActivityListResponse,
@@ -40,6 +43,62 @@ def get_task_service(
     redis: aioredis.Redis = Depends(get_redis),
 ) -> TaskService:
     return TaskService(db=db, redis=redis)
+
+
+# ---------------------------------------------------------------------------
+# Shared helper — resolve task + verify org membership
+# ---------------------------------------------------------------------------
+
+async def _resolve_task_org(
+    task_id: UUID,
+    current_user: User,
+    db: AsyncSession,
+) -> tuple[Task, UUID]:
+    """Load task, verify current user is an org member, return (task, org_id)."""
+    task = await db.scalar(select(Task).where(Task.id == task_id))
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "TASK_NOT_FOUND", "message": "Task not found"},
+        )
+    member = await db.scalar(
+        select(OrgMember).where(
+            OrgMember.org_id == task.org_id,
+            OrgMember.user_id == current_user.id,
+        )
+    )
+    if member is None:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "FORBIDDEN", "message": "Access denied"},
+        )
+    return task, task.org_id
+
+
+async def _resolve_task_org_with_member(
+    task_id: UUID,
+    current_user: User,
+    db: AsyncSession,
+) -> tuple[Task, UUID, OrgMember]:
+    """Load task, verify org membership, return (task, org_id, member)."""
+    task = await db.scalar(select(Task).where(Task.id == task_id))
+    if task is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "TASK_NOT_FOUND", "message": "Task not found"},
+        )
+    member = await db.scalar(
+        select(OrgMember).where(
+            OrgMember.org_id == task.org_id,
+            OrgMember.user_id == current_user.id,
+        )
+    )
+    if member is None:
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "FORBIDDEN", "message": "Access denied"},
+        )
+    return task, task.org_id, member
 
 
 # ---------------------------------------------------------------------------
@@ -118,39 +177,10 @@ async def get_task(
     task_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    redis: aioredis.Redis = Depends(get_redis),
     service: TaskService = Depends(get_task_service),
 ) -> TaskDetailResponse:
-    """
-    Get task detail by ID.
-
-    Org scoping is enforced inside the service by verifying the task's
-    org_id matches an org the current user belongs to.
-    """
-    from sqlalchemy import select
-    from app.models.member import OrgMember as _OrgMember
-
-    # Resolve org_id from task's org — verify user is a member
-    from app.models.task import Task as _Task
-    task_result = await db.execute(
-        select(_Task).where(_Task.id == task_id)
-    )
-    task = task_result.scalar_one_or_none()
-    if task is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task not found"})
-
-    member_result = await db.execute(
-        select(_OrgMember).where(
-            _OrgMember.org_id == task.org_id,
-            _OrgMember.user_id == current_user.id,
-        )
-    )
-    if member_result.scalar_one_or_none() is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Access denied"})
-
-    return await service.get_task(task_id, task.org_id)
+    task, org_id = await _resolve_task_org(task_id, current_user, db)
+    return await service.get_task(task_id, org_id)
 
 
 # ---------------------------------------------------------------------------
@@ -167,30 +197,10 @@ async def update_task(
     data: TaskUpdateRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    redis: aioredis.Redis = Depends(get_redis),
     service: TaskService = Depends(get_task_service),
 ) -> TaskDetailResponse:
-    from sqlalchemy import select
-    from app.models.member import OrgMember as _OrgMember
-    from app.models.task import Task as _Task
-
-    task_result = await db.execute(select(_Task).where(_Task.id == task_id))
-    task = task_result.scalar_one_or_none()
-    if task is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task not found"})
-
-    member_result = await db.execute(
-        select(_OrgMember).where(
-            _OrgMember.org_id == task.org_id,
-            _OrgMember.user_id == current_user.id,
-        )
-    )
-    if member_result.scalar_one_or_none() is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Access denied"})
-
-    return await service.update_task(task_id, task.org_id, data, current_user)
+    task, org_id = await _resolve_task_org(task_id, current_user, db)
+    return await service.update_task(task_id, org_id, data, current_user)
 
 
 # ---------------------------------------------------------------------------
@@ -206,32 +216,11 @@ async def delete_task(
     task_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    redis: aioredis.Redis = Depends(get_redis),
     service: TaskService = Depends(get_task_service),
 ) -> dict:
-    from sqlalchemy import select
-    from app.models.member import OrgMember as _OrgMember
-    from app.models.task import Task as _Task
-
-    task_result = await db.execute(select(_Task).where(_Task.id == task_id))
-    task = task_result.scalar_one_or_none()
-    if task is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task not found"})
-
-    member_result = await db.execute(
-        select(_OrgMember).where(
-            _OrgMember.org_id == task.org_id,
-            _OrgMember.user_id == current_user.id,
-        )
-    )
-    member = member_result.scalar_one_or_none()
-    if member is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Access denied"})
-
+    task, org_id, member = await _resolve_task_org_with_member(task_id, current_user, db)
     is_admin = member.role in (OrgRole.owner, OrgRole.admin)
-    await service.delete_task(task_id, task.org_id, current_user, is_admin=is_admin)
+    await service.delete_task(task_id, org_id, current_user, is_admin=is_admin)
     return {}
 
 
@@ -249,30 +238,10 @@ async def move_task(
     data: TaskMoveRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    redis: aioredis.Redis = Depends(get_redis),
     service: TaskService = Depends(get_task_service),
 ) -> TaskDetailResponse:
-    from sqlalchemy import select
-    from app.models.member import OrgMember as _OrgMember
-    from app.models.task import Task as _Task
-
-    task_result = await db.execute(select(_Task).where(_Task.id == task_id))
-    task = task_result.scalar_one_or_none()
-    if task is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task not found"})
-
-    member_result = await db.execute(
-        select(_OrgMember).where(
-            _OrgMember.org_id == task.org_id,
-            _OrgMember.user_id == current_user.id,
-        )
-    )
-    if member_result.scalar_one_or_none() is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Access denied"})
-
-    return await service.move_task(task_id, task.org_id, data, current_user)
+    task, org_id = await _resolve_task_org(task_id, current_user, db)
+    return await service.move_task(task_id, org_id, data, current_user)
 
 
 # ---------------------------------------------------------------------------
@@ -288,33 +257,10 @@ async def bulk_update_positions(
     data: BulkPositionRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    redis: aioredis.Redis = Depends(get_redis),
     service: TaskService = Depends(get_task_service),
 ) -> dict:
-    from sqlalchemy import select
-    from app.models.member import OrgMember as _OrgMember
-    from app.models.task import Task as _Task
-
-    # Resolve org_id from first task
-    first_task_result = await db.execute(
-        select(_Task).where(_Task.id == data.positions[0].task_id)
-    )
-    first_task = first_task_result.scalar_one_or_none()
-    if first_task is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task not found"})
-
-    member_result = await db.execute(
-        select(_OrgMember).where(
-            _OrgMember.org_id == first_task.org_id,
-            _OrgMember.user_id == current_user.id,
-        )
-    )
-    if member_result.scalar_one_or_none() is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Access denied"})
-
-    await service.bulk_update_positions(first_task.org_id, data)
+    task, org_id = await _resolve_task_org(data.positions[0].task_id, current_user, db)
+    await service.bulk_update_positions(org_id, data)
     return {}
 
 
@@ -331,30 +277,10 @@ async def list_comments(
     task_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    redis: aioredis.Redis = Depends(get_redis),
     service: TaskService = Depends(get_task_service),
 ) -> CommentListResponse:
-    from sqlalchemy import select
-    from app.models.member import OrgMember as _OrgMember
-    from app.models.task import Task as _Task
-
-    task_result = await db.execute(select(_Task).where(_Task.id == task_id))
-    task = task_result.scalar_one_or_none()
-    if task is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task not found"})
-
-    member_result = await db.execute(
-        select(_OrgMember).where(
-            _OrgMember.org_id == task.org_id,
-            _OrgMember.user_id == current_user.id,
-        )
-    )
-    if member_result.scalar_one_or_none() is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Access denied"})
-
-    return await service.list_comments(task_id, task.org_id)
+    task, org_id = await _resolve_task_org(task_id, current_user, db)
+    return await service.list_comments(task_id, org_id)
 
 
 # ---------------------------------------------------------------------------
@@ -372,30 +298,10 @@ async def create_comment(
     data: CommentCreateRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    redis: aioredis.Redis = Depends(get_redis),
     service: TaskService = Depends(get_task_service),
 ) -> CommentResponse:
-    from sqlalchemy import select
-    from app.models.member import OrgMember as _OrgMember
-    from app.models.task import Task as _Task
-
-    task_result = await db.execute(select(_Task).where(_Task.id == task_id))
-    task = task_result.scalar_one_or_none()
-    if task is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task not found"})
-
-    member_result = await db.execute(
-        select(_OrgMember).where(
-            _OrgMember.org_id == task.org_id,
-            _OrgMember.user_id == current_user.id,
-        )
-    )
-    if member_result.scalar_one_or_none() is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Access denied"})
-
-    return await service.create_comment(task_id, task.org_id, data, current_user)
+    task, org_id = await _resolve_task_org(task_id, current_user, db)
+    return await service.create_comment(task_id, org_id, data, current_user)
 
 
 # ---------------------------------------------------------------------------
@@ -413,32 +319,11 @@ async def update_comment(
     data: CommentUpdateRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    redis: aioredis.Redis = Depends(get_redis),
     service: TaskService = Depends(get_task_service),
 ) -> CommentResponse:
-    from sqlalchemy import select
-    from app.models.member import OrgMember as _OrgMember
-    from app.models.task import Task as _Task
-
-    task_result = await db.execute(select(_Task).where(_Task.id == task_id))
-    task = task_result.scalar_one_or_none()
-    if task is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task not found"})
-
-    member_result = await db.execute(
-        select(_OrgMember).where(
-            _OrgMember.org_id == task.org_id,
-            _OrgMember.user_id == current_user.id,
-        )
-    )
-    member = member_result.scalar_one_or_none()
-    if member is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Access denied"})
-
+    task, org_id, member = await _resolve_task_org_with_member(task_id, current_user, db)
     is_admin = member.role in (OrgRole.owner, OrgRole.admin)
-    return await service.update_comment(comment_id, task.org_id, data, current_user, is_admin=is_admin)
+    return await service.update_comment(comment_id, org_id, data, current_user, is_admin=is_admin)
 
 
 # ---------------------------------------------------------------------------
@@ -455,32 +340,11 @@ async def delete_comment(
     comment_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    redis: aioredis.Redis = Depends(get_redis),
     service: TaskService = Depends(get_task_service),
 ) -> dict:
-    from sqlalchemy import select
-    from app.models.member import OrgMember as _OrgMember
-    from app.models.task import Task as _Task
-
-    task_result = await db.execute(select(_Task).where(_Task.id == task_id))
-    task = task_result.scalar_one_or_none()
-    if task is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task not found"})
-
-    member_result = await db.execute(
-        select(_OrgMember).where(
-            _OrgMember.org_id == task.org_id,
-            _OrgMember.user_id == current_user.id,
-        )
-    )
-    member = member_result.scalar_one_or_none()
-    if member is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Access denied"})
-
+    task, org_id, member = await _resolve_task_org_with_member(task_id, current_user, db)
     is_admin = member.role in (OrgRole.owner, OrgRole.admin)
-    await service.delete_comment(comment_id, task.org_id, current_user, is_admin=is_admin)
+    await service.delete_comment(comment_id, org_id, current_user, is_admin=is_admin)
     return {}
 
 
@@ -497,27 +361,7 @@ async def list_activity(
     task_id: UUID,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-    redis: aioredis.Redis = Depends(get_redis),
     service: TaskService = Depends(get_task_service),
 ) -> ActivityListResponse:
-    from sqlalchemy import select
-    from app.models.member import OrgMember as _OrgMember
-    from app.models.task import Task as _Task
-
-    task_result = await db.execute(select(_Task).where(_Task.id == task_id))
-    task = task_result.scalar_one_or_none()
-    if task is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=404, detail={"code": "TASK_NOT_FOUND", "message": "Task not found"})
-
-    member_result = await db.execute(
-        select(_OrgMember).where(
-            _OrgMember.org_id == task.org_id,
-            _OrgMember.user_id == current_user.id,
-        )
-    )
-    if member_result.scalar_one_or_none() is None:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail={"code": "FORBIDDEN", "message": "Access denied"})
-
-    return await service.list_activity(task_id, task.org_id)
+    task, org_id = await _resolve_task_org(task_id, current_user, db)
+    return await service.list_activity(task_id, org_id)

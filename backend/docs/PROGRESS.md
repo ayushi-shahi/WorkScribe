@@ -1,7 +1,7 @@
 # WorkScribe — Backend Progress
 
-**Last Updated:** 2026-02-28
-**Latest Commit:** `feat: add search endpoint for tasks and pages (Phase 6.5)`
+**Last Updated:** 2026-03-01
+**Latest Commit:** `feat: security audit, dashboard, rate limiting (Phase 7.1 + 7.2)`
 **Alembic Head:** `d4e5f6a1b2c3` (create_notifications_table)
 **API:** `http://localhost:8001`
 
@@ -21,8 +21,8 @@
 | 6.2   | Notifications DB + REST API | ✅ Complete & Tested | committed   |
 | 6.3   | Celery dispatch + WebSocket | ✅ Complete & Tested | committed   |
 | 6.5   | Search                      | ✅ Complete & Tested | committed   |
-| 7.1   | Dashboard                   | 🔜 Not Started       | —          |
-| 7.2   | Security Audit              | 🔜 Not Started       | —          |
+| 7.1   | Dashboard                   | ✅ Complete & Tested | committed   |
+| 7.2   | Security Audit              | ✅ Complete & Tested | committed   |
 
 ---
 
@@ -136,7 +136,7 @@
 
 ### Files
 
-* `app/schemas/project.py`
+* `app/schemas/project.py` — includes `StatusRead` schema
 * `app/schemas/task.py`
 * `app/services/project_service.py`
 * `app/services/task_service.py`
@@ -145,13 +145,14 @@
 
 ### Project Endpoints Tested ✅
 
-| Method | Path                                           | Description                    |
-| ------ | ---------------------------------------------- | ------------------------------ |
-| GET    | `/api/v1/organizations/{slug}/projects`      | List projects                  |
-| POST   | `/api/v1/organizations/{slug}/projects`      | Create project + seed statuses |
-| GET    | `/api/v1/organizations/{slug}/projects/{id}` | Get project detail             |
-| PATCH  | `/api/v1/organizations/{slug}/projects/{id}` | Update project                 |
-| DELETE | `/api/v1/organizations/{slug}/projects/{id}` | Archive (soft delete)          |
+| Method | Path                                                    | Description                    |
+| ------ | ------------------------------------------------------- | ------------------------------ |
+| GET    | `/api/v1/organizations/{slug}/projects`               | List projects                  |
+| POST   | `/api/v1/organizations/{slug}/projects`               | Create project + seed statuses |
+| GET    | `/api/v1/organizations/{slug}/projects/{id}`          | Get project detail             |
+| PATCH  | `/api/v1/organizations/{slug}/projects/{id}`          | Update project                 |
+| DELETE | `/api/v1/organizations/{slug}/projects/{id}`          | Archive (soft delete)          |
+| GET    | `/api/v1/organizations/{slug}/projects/{id}/statuses` | List project statuses          |
 
 ### Task Endpoints Tested ✅
 
@@ -166,6 +167,9 @@
 | PATCH  | `/api/v1/tasks/bulk-positions`                     | Batch update positions           |
 | GET    | `/api/v1/tasks/{id}/comments`                      | List comments                    |
 | POST   | `/api/v1/tasks/{id}/comments`                      | Add comment                      |
+| PATCH  | `/api/v1/tasks/{id}/comments/{comment_id}`         | Edit comment                     |
+| DELETE | `/api/v1/tasks/{id}/comments/{comment_id}`         | Delete comment                   |
+| GET    | `/api/v1/tasks/{id}/activity`                      | Get task activity log            |
 
 ---
 
@@ -226,17 +230,17 @@
 
 ### Endpoints Tested ✅
 
-| Method | Path                                              | Description          |
-| ------ | ------------------------------------------------- | -------------------- |
-| POST   | `/api/v1/organizations/{slug}/wiki/spaces`      | Create wiki space    |
-| GET    | `/api/v1/organizations/{slug}/wiki/spaces`      | List spaces          |
-| GET    | `/api/v1/organizations/{slug}/wiki/spaces/{id}` | Get space detail     |
-| POST   | `/api/v1/wiki/spaces/{id}/pages`                | Create page          |
-| GET    | `/api/v1/wiki/spaces/{id}/pages`                | List pages in space  |
-| GET    | `/api/v1/wiki/pages/{id}`                       | Get page detail      |
-| PATCH  | `/api/v1/wiki/pages/{id}`                       | Update page          |
-| DELETE | `/api/v1/wiki/pages/{id}`                       | Soft delete page     |
-| GET    | `/api/v1/wiki/pages/{id}/history`               | Page version history |
+| Method | Path                                              | Description       |
+| ------ | ------------------------------------------------- | ----------------- |
+| POST   | `/api/v1/organizations/{slug}/wiki/spaces`      | Create wiki space |
+| GET    | `/api/v1/organizations/{slug}/wiki/spaces`      | List spaces       |
+| GET    | `/api/v1/organizations/{slug}/wiki/spaces/{id}` | Get space detail  |
+| POST   | `/api/v1/wiki/spaces/{id}/pages`                | Create page       |
+| GET    | `/api/v1/wiki/spaces/{id}/pages`                | List pages        |
+| GET    | `/api/v1/wiki/pages/{id}`                       | Get page detail   |
+| PATCH  | `/api/v1/wiki/pages/{id}`                       | Update page       |
+| DELETE | `/api/v1/wiki/pages/{id}`                       | Soft delete page  |
+| POST   | `/api/v1/wiki/pages/{id}/move`                  | Move page in tree |
 
 ---
 
@@ -377,20 +381,80 @@
 
 ---
 
-## Remaining Work
+## Phase 7.1 — Dashboard ✅
 
-### Phase 7.1 — Dashboard
+**Commit:** committed
 
-* `GET /api/v1/organizations/{slug}/activity` — org-level activity feed (last 50 entries)
-* `GET /api/v1/organizations/{slug}/dashboard` — summary stats (open tasks count, active sprints, recent pages, unread notifications count)
+### Files
 
-### Phase 7.2 — Security Audit
+* `app/schemas/dashboard.py` — ActivityEntryRead, ActivityFeedResponse, DashboardResponse, ActiveSprintSummary, RecentPageRead
+* `app/services/dashboard_service.py` — activity feed + summary stats queries
+* `app/routers/dashboard.py` — two endpoints
 
-* Audit all endpoints for `get_current_user` dependency
-* Grep for raw SQL string interpolation
-* Verify cross-tenant isolation
-* Rate limiting middleware (Redis counter)
-* CORS origin review
+### Endpoints Tested ✅
+
+| Method | Path                                       | Description                                      |
+| ------ | ------------------------------------------ | ------------------------------------------------ |
+| GET    | `/api/v1/organizations/{slug}/activity`  | Org-level activity feed, newest first, paginated |
+| GET    | `/api/v1/organizations/{slug}/dashboard` | Summary stats for org dashboard                  |
+
+### Dashboard Response Fields
+
+* `open_tasks_count` — top-level tasks with non-done status, non-archived projects
+* `active_sprints_count` — count of active sprints across org
+* `unread_notifications_count` — unread notifications for current user
+* `active_sprints` — list with `total_tasks` + `done_tasks` per sprint
+* `recent_pages` — last 5 updated non-deleted pages with space name
+
+---
+
+## Phase 7.2 — Security Audit ✅
+
+**Commit:** committed
+
+### Sub-tasks Completed
+
+**1. Endpoint protection audit — PASS**
+
+* All non-auth routes protected with `get_current_user`, `get_org_member`, or `require_role`
+* No unprotected endpoints found
+
+**2. SQL injection audit — PASS**
+
+* Zero raw SQL string interpolation (`f"...SELECT"`, `text(f"..."`) found across all services and routers
+
+**3. Cross-tenant isolation — 30/30 tests pass**
+
+* `tests/test_isolation.py` extended with task, wiki page, and notification isolation tests
+* Covers: orgs, projects, members, invitations, token security, member removal, tasks, pages, notifications
+
+**4. Rate limiting — LIVE**
+
+* `app/core/rate_limit.py` — Redis-based sliding window middleware
+* 100 requests/min per IP — returns 429 with `Retry-After` header
+* `/health` endpoint exempt
+* Fails open if Redis unavailable
+* `app.state.redis` initialised in lifespan, shared across middleware and app
+* Verified: 100 requests → pass, requests 101+ → 429
+
+**5. CORS review — PASS**
+
+* Default origins: `http://localhost:5173`, `http://localhost:3000` — no wildcards
+* Production origins set via `CORS_ORIGINS` env var
+* `allow_credentials=True` correct for JWT Authorization header usage
+
+### New Files
+
+* `app/core/rate_limit.py` — `RateLimitMiddleware`
+
+### Modified Files
+
+* `app/main.py` — added `RateLimitMiddleware`, Redis lifespan init/teardown
+* `app/routers/tasks.py` — moved all inline imports to top, extracted `_resolve_task_org` helpers
+* `app/routers/pages.py` — fixed `_verify_membership` to return 403 (not 404) for non-members
+* `app/schemas/project.py` — added `StatusRead` schema
+* `app/routers/projects.py` — added `GET /organizations/{slug}/projects/{id}/statuses` endpoint
+* `tests/test_isolation.py` — added sections 7 (tasks), 8 (wiki pages), 9 (notifications)
 
 ---
 
@@ -432,6 +496,8 @@
 * Soft delete pattern used for: projects (is_archived), pages (is_deleted)
 * All errors return structured JSON: `{"code": "ERROR_CODE", "message": "..."}`
 * Celery tasks always create `asyncio.new_event_loop()` — never use `asyncio.run()` in forked workers
+* Rate limiting: 100 req/min per IP via Redis, exempt paths: `/health`
+* `app.state.redis` holds shared Redis connection initialised at lifespan startup
 * Testing: PowerShell `Invoke-RestMethod` against `http://localhost:8001`
 
 ---
@@ -442,6 +508,8 @@
 | ------------------ | ----------- | ------------------ |
 | test@example.com   | password123 | Owner of test-org  |
 | member@example.com | password123 | Member of test-org |
+
+---
 
 ## Key IDs (local dev)
 

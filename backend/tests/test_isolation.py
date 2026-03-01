@@ -8,6 +8,9 @@ Verifies that:
 - Project CRUD is properly isolated
 - Token security is enforced
 - Removed members lose access immediately
+- Tasks are isolated across orgs
+- Wiki pages and spaces are isolated across orgs
+- Notifications are isolated per user
 """
 
 import uuid
@@ -105,6 +108,70 @@ async def setup_org_with_member(
     accept_resp = await accept_invite(client, invite_token)
     assert accept_resp.status_code == 200, f"Accept invite failed: {accept_resp.text}"
     return owner_token, member_token, org_slug
+
+
+async def create_task(
+    client: httpx.AsyncClient,
+    token: str,
+    org_slug: str,
+    project_id: str,
+    status_id: str,
+    title: str = "Test Task",
+) -> dict:
+    resp = await client.post(
+        f"{BASE_URL}/api/v1/organizations/{org_slug}/projects/{project_id}/tasks",
+        json={"title": title, "status_id": status_id},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, f"Create task failed: {resp.text}"
+    return resp.json()
+
+
+async def get_first_status_id(
+    client: httpx.AsyncClient,
+    token: str,
+    org_slug: str,
+    project_id: str,
+) -> str:
+    resp = await client.get(
+        f"{BASE_URL}/api/v1/organizations/{org_slug}/projects/{project_id}/statuses",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200, f"Get statuses failed: {resp.text}"
+    statuses = resp.json()
+    assert len(statuses) > 0, "No statuses found for project"
+    return statuses[0]["id"]
+
+
+async def create_wiki_space(
+    client: httpx.AsyncClient,
+    token: str,
+    org_slug: str,
+    name: str,
+    key: str,
+) -> dict:
+    resp = await client.post(
+        f"{BASE_URL}/api/v1/organizations/{org_slug}/wiki/spaces",
+        json={"name": name, "key": key},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, f"Create wiki space failed: {resp.text}"
+    return resp.json()
+
+
+async def create_page(
+    client: httpx.AsyncClient,
+    token: str,
+    space_id: str,
+    title: str = "Test Page",
+) -> dict:
+    resp = await client.post(
+        f"{BASE_URL}/api/v1/wiki/spaces/{space_id}/pages",
+        json={"title": title},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201, f"Create page failed: {resp.text}"
+    return resp.json()
 
 
 # ---------------------------------------------------------------------------
@@ -540,3 +607,221 @@ async def test_owner_cannot_remove_themselves():
             headers={"Authorization": f"Bearer {owner_token}"},
         )
         assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# 7. Task Isolation
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_cannot_read_other_org_task():
+    """User A cannot GET a task that belongs to Org B."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        slug_a = unique_slug("tsk1a")
+        slug_b = unique_slug("tsk1b")
+        email_a = unique_email("tsk1a")
+        email_b = unique_email("tsk1b")
+        await register(client, email_a)
+        await register(client, email_b)
+        token_a = await login(client, email_a)
+        token_b = await login(client, email_b)
+        await create_org(client, token_a, "Task Org A", slug_a)
+        await create_org(client, token_b, "Task Org B", slug_b)
+
+        project_b = await create_project(client, token_b, slug_b, "Proj B", "PRJB")
+        status_id_b = await get_first_status_id(client, token_b, slug_b, project_b["id"])
+        task_b = await create_task(client, token_b, slug_b, project_b["id"], status_id_b, "Secret Task")
+
+        resp = await client.get(
+            f"{BASE_URL}/api/v1/tasks/{task_b['id']}",
+            headers={"Authorization": f"Bearer {token_a}"},
+        )
+        assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_cannot_update_other_org_task():
+    """User A cannot PATCH a task that belongs to Org B."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        slug_a = unique_slug("tsk2a")
+        slug_b = unique_slug("tsk2b")
+        email_a = unique_email("tsk2a")
+        email_b = unique_email("tsk2b")
+        await register(client, email_a)
+        await register(client, email_b)
+        token_a = await login(client, email_a)
+        token_b = await login(client, email_b)
+        await create_org(client, token_a, "Task Org A", slug_a)
+        await create_org(client, token_b, "Task Org B", slug_b)
+
+        project_b = await create_project(client, token_b, slug_b, "Proj B", "PRJB")
+        status_id_b = await get_first_status_id(client, token_b, slug_b, project_b["id"])
+        task_b = await create_task(client, token_b, slug_b, project_b["id"], status_id_b)
+
+        resp = await client.patch(
+            f"{BASE_URL}/api/v1/tasks/{task_b['id']}",
+            json={"title": "Hacked Title"},
+            headers={"Authorization": f"Bearer {token_a}"},
+        )
+        assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_cannot_delete_other_org_task():
+    """User A cannot DELETE a task that belongs to Org B."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        slug_a = unique_slug("tsk3a")
+        slug_b = unique_slug("tsk3b")
+        email_a = unique_email("tsk3a")
+        email_b = unique_email("tsk3b")
+        await register(client, email_a)
+        await register(client, email_b)
+        token_a = await login(client, email_a)
+        token_b = await login(client, email_b)
+        await create_org(client, token_a, "Task Org A", slug_a)
+        await create_org(client, token_b, "Task Org B", slug_b)
+
+        project_b = await create_project(client, token_b, slug_b, "Proj B", "PRJB")
+        status_id_b = await get_first_status_id(client, token_b, slug_b, project_b["id"])
+        task_b = await create_task(client, token_b, slug_b, project_b["id"], status_id_b)
+
+        resp = await client.delete(
+            f"{BASE_URL}/api/v1/tasks/{task_b['id']}",
+            headers={"Authorization": f"Bearer {token_a}"},
+        )
+        assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_cannot_list_other_org_tasks():
+    """User A cannot list tasks under Org B's project via org slug."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        slug_a = unique_slug("tsk4a")
+        slug_b = unique_slug("tsk4b")
+        email_a = unique_email("tsk4a")
+        email_b = unique_email("tsk4b")
+        await register(client, email_a)
+        await register(client, email_b)
+        token_a = await login(client, email_a)
+        token_b = await login(client, email_b)
+        await create_org(client, token_a, "Task Org A", slug_a)
+        await create_org(client, token_b, "Task Org B", slug_b)
+
+        project_b = await create_project(client, token_b, slug_b, "Proj B", "PRJB")
+
+        resp = await client.get(
+            f"{BASE_URL}/api/v1/organizations/{slug_b}/projects/{project_b['id']}/tasks",
+            headers={"Authorization": f"Bearer {token_a}"},
+        )
+        assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# 8. Wiki Page Isolation
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_cannot_read_other_org_page():
+    """User A cannot GET a page that belongs to Org B."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        slug_a = unique_slug("wiki1a")
+        slug_b = unique_slug("wiki1b")
+        email_a = unique_email("wiki1a")
+        email_b = unique_email("wiki1b")
+        await register(client, email_a)
+        await register(client, email_b)
+        token_a = await login(client, email_a)
+        token_b = await login(client, email_b)
+        await create_org(client, token_a, "Wiki Org A", slug_a)
+        await create_org(client, token_b, "Wiki Org B", slug_b)
+
+        space_b = await create_wiki_space(client, token_b, slug_b, "Eng B", "ENGB")
+        page_b = await create_page(client, token_b, space_b["id"], "Secret Page")
+
+        resp = await client.get(
+            f"{BASE_URL}/api/v1/wiki/pages/{page_b['id']}",
+            headers={"Authorization": f"Bearer {token_a}"},
+        )
+        assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_cannot_update_other_org_page():
+    """User A cannot PATCH a page that belongs to Org B."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        slug_a = unique_slug("wiki2a")
+        slug_b = unique_slug("wiki2b")
+        email_a = unique_email("wiki2a")
+        email_b = unique_email("wiki2b")
+        await register(client, email_a)
+        await register(client, email_b)
+        token_a = await login(client, email_a)
+        token_b = await login(client, email_b)
+        await create_org(client, token_a, "Wiki Org A", slug_a)
+        await create_org(client, token_b, "Wiki Org B", slug_b)
+
+        space_b = await create_wiki_space(client, token_b, slug_b, "Eng B", "ENGB")
+        page_b = await create_page(client, token_b, space_b["id"])
+
+        resp = await client.patch(
+            f"{BASE_URL}/api/v1/wiki/pages/{page_b['id']}",
+            json={"title": "Hacked"},
+            headers={"Authorization": f"Bearer {token_a}"},
+        )
+        assert resp.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_cannot_list_other_org_space_pages():
+    """User A cannot list pages in Org B's wiki space."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        slug_a = unique_slug("wiki3a")
+        slug_b = unique_slug("wiki3b")
+        email_a = unique_email("wiki3a")
+        email_b = unique_email("wiki3b")
+        await register(client, email_a)
+        await register(client, email_b)
+        token_a = await login(client, email_a)
+        token_b = await login(client, email_b)
+        await create_org(client, token_a, "Wiki Org A", slug_a)
+        await create_org(client, token_b, "Wiki Org B", slug_b)
+
+        space_b = await create_wiki_space(client, token_b, slug_b, "Eng B", "ENGB")
+
+        resp = await client.get(
+            f"{BASE_URL}/api/v1/wiki/spaces/{space_b['id']}/pages",
+            headers={"Authorization": f"Bearer {token_a}"},
+        )
+        assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# 9. Notification Isolation
+# ---------------------------------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_cannot_read_other_users_notifications():
+    """User A cannot see User B's notifications."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        slug = unique_slug("notif1")
+        owner_token, member_token, slug = await setup_org_with_member(
+            client, unique_email("notif1o"), unique_email("notif1m"),
+            "Notif Org", slug, "member"
+        )
+
+        # Both users fetch their own notifications
+        resp_owner = await client.get(
+            f"{BASE_URL}/api/v1/notifications",
+            headers={"Authorization": f"Bearer {owner_token}"},
+        )
+        resp_member = await client.get(
+            f"{BASE_URL}/api/v1/notifications",
+            headers={"Authorization": f"Bearer {member_token}"},
+        )
+        assert resp_owner.status_code == 200
+        assert resp_member.status_code == 200
+
+        # Verify notifications endpoint is scoped per user — IDs don't overlap
+        owner_ids = {n["id"] for n in resp_owner.json().get("notifications", [])}
+        member_ids = {n["id"] for n in resp_member.json().get("notifications", [])}
+        assert owner_ids.isdisjoint(member_ids), "Notification IDs overlap between users"

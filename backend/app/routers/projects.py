@@ -23,6 +23,9 @@ from app.schemas.project import (
     ProjectUpdateRequest,
 )
 from app.services.project_service import ProjectService
+from app.models.task_status import TaskStatus as TaskStatusModel
+from app.schemas.project import StatusRead
+
 
 router = APIRouter()
 
@@ -111,3 +114,26 @@ async def archive_project(
     org, _ = org_and_member
     await service.archive_project(project_id, org.id)
     return {}
+
+@router.get(
+    "/organizations/{slug}/projects/{project_id}/statuses",
+    response_model=list[StatusRead],
+    summary="List statuses for a project",
+)
+async def list_statuses(
+    project_id: UUID,
+    org_and_member: tuple[Organization, OrgMember] = Depends(get_org_member),
+    db: AsyncSession = Depends(get_db),
+) -> list[StatusRead]:
+    from sqlalchemy import select
+    from app.models.task_status import TaskStatus as _TaskStatus
+    org, _ = org_and_member
+    result = await db.execute(
+        select(_TaskStatus)
+        .where(
+            _TaskStatus.project_id == project_id,
+            _TaskStatus.org_id == org.id,
+        )
+        .order_by(_TaskStatus.position)
+    )
+    return result.scalars().all()
