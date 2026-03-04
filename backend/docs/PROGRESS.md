@@ -1,7 +1,7 @@
 # WorkScribe — Backend Progress
 
-**Last Updated:** 2026-03-01
-**Latest Commit:** `feat: security audit, dashboard, rate limiting (Phase 7.1 + 7.2)`
+**Last Updated:** 2026-03-04
+**Latest Commit:** `feat: redis caching board + page tree (Phase 5.2)`
 **Alembic Head:** `d4e5f6a1b2c3` (create_notifications_table)
 **API:** `http://localhost:8001`
 
@@ -17,13 +17,14 @@
 | 2.3   | Projects + Tasks            | ✅ Complete & Tested | —          |
 | 2.4   | Sprints                     | ✅ Complete & Tested | `47c2c7e` |
 | 5     | Wiki / Pages                | ✅ Complete & Tested | `a5cd8ab` |
+| 5.2   | Performance (Redis Caching) | ✅ Complete & Tested | committed   |
 | 6.1   | Task ↔ Doc Linking         | ✅ Complete & Tested | committed   |
 | 6.2   | Notifications DB + REST API | ✅ Complete & Tested | committed   |
 | 6.3   | Celery dispatch + WebSocket | ✅ Complete & Tested | committed   |
 | 6.5   | Search                      | ✅ Complete & Tested | committed   |
 | 7.1   | Dashboard                   | ✅ Complete & Tested | committed   |
 | 7.2   | Security Audit              | ✅ Complete & Tested | committed   |
-| 8.1   | Google OAuth                | 🔜 Up Next           | —          |
+| 8.1   | Google OAuth                | ✅ Complete & Tested | committed   |
 
 ---
 
@@ -245,6 +246,56 @@
 
 ---
 
+## Phase 5.2 — Performance (Redis Caching) ✅
+
+**Commit:** committed
+
+### Overview
+
+Redis caching added to the two most expensive read endpoints. No migration needed — uses existing Redis infrastructure.
+
+### Modified Files
+
+* `app/services/task_service.py` — board cache (TTL 30s) + invalidation
+* `app/services/wiki_service.py` — page tree cache (TTL 60s) + invalidation
+
+### Caching Strategy
+
+**Board (task list):**
+
+* Cache key: `board:{org_id}:{project_id}`
+* TTL: 30 seconds
+* Cached only when: no filters applied AND default pagination (skip=0, limit=25)
+* Invalidated by: `create_task`, `update_task`, `delete_task`, `move_task`, `bulk_update_positions`
+* On cache HIT: only `SELECT projects` runs (security check) — no task DB queries
+
+**Page tree:**
+
+* Cache key: `page_tree:{org_id}:{space_id}`
+* TTL: 60 seconds
+* Always cached (no filter variants for tree endpoint)
+* Invalidated by: `create_page`, `update_page`, `delete_page`, `move_page`
+* On cache HIT: only `SELECT wiki_spaces` runs (security check) — no page DB queries
+
+### Serialization
+
+* `response.model_dump_json()` → stored as string in Redis
+* `TaskListResponse.model_validate_json(cached)` / `PageListResponse.model_validate_json(cached)` on retrieval
+* All cache errors fail silently with `logger.warning` — never breaks a request
+
+### Tests Passed ✅ — 6/6
+
+| # | Test                                                                | Result |
+| - | ------------------------------------------------------------------- | ------ |
+| 1 | Board cache SET on first unfiltered request                         | ✅     |
+| 2 | Board cache HIT on second request — no `SELECT tasks`in logs     | ✅     |
+| 3 | Board cache invalidated (`EXISTS`1→0) after `create_task`      | ✅     |
+| 4 | Page tree cache SET on first request (TTL=60)                       | ✅     |
+| 5 | Page tree cache HIT on second request — no `SELECT pages`in logs | ✅     |
+| 6 | Page tree cache invalidated (`EXISTS`1→0) after `create_page`  | ✅     |
+
+---
+
 ## Phase 6.1 — Task ↔ Page Linking ✅
 
 **Commit:** committed
@@ -306,12 +357,6 @@
 | PATCH  | `/api/v1/notifications/{id}/read`     | Mark single notification as read                               |
 | POST   | `/api/v1/notifications/mark-all-read` | Mark all notifications as read                                 |
 
-### Error Cases Verified
-
-* Cross-user isolation: users only see their own notifications
-* `unread_count` always reflects current state regardless of filter
-* 404 `NOTIFICATION_NOT_FOUND` on mark-read for wrong user
-
 ---
 
 ## Phase 6.3 — Celery Dispatch + WebSocket ✅
@@ -320,7 +365,7 @@
 
 ### Files
 
-* `app/core/websocket.py` — `ConnectionManager` singleton (in-memory, single-server MVP)
+* `app/core/websocket.py` — `ConnectionManager` singleton
 * `app/workers/notification_tasks.py` — `dispatch_notification` Celery task
 * `app/routers/websocket.py` — `WS /api/v1/ws?token={jwt}` endpoint
 * `app/services/task_service.py` — wired notification dispatch into 3 triggers
@@ -333,19 +378,10 @@
 | Task/move updated to Done status | Reporter       | `new_status.category == done`AND `reporter != actor` |
 | @mention in comment body_json    | Mentioned user | Parsed from Tiptap mention nodes, skips self-mention     |
 
-### WebSocket Protocol
-
-* Connect: `WS /api/v1/ws?token={access_token}`
-* Auth: JWT decoded before `accept()` — invalid token → close code 4001
-* On connect: server sends `{"type": "connected", "user_id": "..."}`
-* On notification: server pushes JSON payload immediately if user online
-* Offline users: notification persists in DB, delivered on next `GET /notifications` poll
-
 ### Known Fix Applied
 
-* `asyncio.run()` in Celery forked workers causes "Future attached to different loop" error
-* Fix: always create `asyncio.new_event_loop()` + `asyncio.set_event_loop()` per task execution
-* `async_engine.sync_engine.dispose()` called BEFORE loop creation to avoid inherited closed loop
+* Celery forked workers: always `asyncio.new_event_loop()` + `asyncio.set_event_loop()` per task
+* `async_engine.sync_engine.dispose()` called BEFORE loop creation
 
 ---
 
@@ -355,30 +391,14 @@
 
 ### Files
 
-* `app/services/search_service.py` — ILIKE search across tasks and pages scoped by org_id
-* `app/routers/search.py` — search router
-* `app/main.py` — search router registered
+* `app/services/search_service.py`
+* `app/routers/search.py`
 
 ### Endpoint Tested ✅
 
 | Method | Path                                             | Description                       |
 | ------ | ------------------------------------------------ | --------------------------------- |
 | GET    | `/api/v1/organizations/{slug}/search?q=&type=` | Search tasks and pages within org |
-
-### Behavior
-
-* `q` required, min 1 char, max 200 chars — empty q returns 422
-* `type` optional — `task` or `page` only, invalid value returns 422
-* No `type` returns both tasks and pages mixed
-* Tasks: searches `title` ILIKE, excludes archived projects, returns `project_key`, `task_number`, `status`
-* Pages: searches `title` ILIKE, excludes soft-deleted pages, returns `space_name`
-* Results sorted: exact title matches first, then by `updated_at` desc
-* Scoped by `org_id` — cross-org access blocked by `get_org_member` dependency
-* Unauthenticated → 401, non-existent org → 404
-
-### Important Note on `get_org_member`
-
-`get_org_member` returns `tuple[Organization, OrgMember]` — always unpack as `org, member = org_member` in router. Do NOT type hint as `OrgMember` directly.
 
 ---
 
@@ -388,9 +408,9 @@
 
 ### Files
 
-* `app/schemas/dashboard.py` — ActivityEntryRead, ActivityFeedResponse, DashboardResponse, ActiveSprintSummary, RecentPageRead
-* `app/services/dashboard_service.py` — activity feed + summary stats queries
-* `app/routers/dashboard.py` — two endpoints
+* `app/schemas/dashboard.py`
+* `app/services/dashboard_service.py`
+* `app/routers/dashboard.py`
 
 ### Endpoints Tested ✅
 
@@ -399,102 +419,45 @@
 | GET    | `/api/v1/organizations/{slug}/activity`  | Org-level activity feed, newest first, paginated |
 | GET    | `/api/v1/organizations/{slug}/dashboard` | Summary stats for org dashboard                  |
 
-### Dashboard Response Fields
-
-* `open_tasks_count` — top-level tasks with non-done status, non-archived projects
-* `active_sprints_count` — count of active sprints across org
-* `unread_notifications_count` — unread notifications for current user
-* `active_sprints` — list with `total_tasks` + `done_tasks` per sprint
-* `recent_pages` — last 5 updated non-deleted pages with space name
-
 ---
 
 ## Phase 7.2 — Security Audit ✅
 
 **Commit:** committed
 
-### Sub-tasks Completed
-
-**1. Endpoint protection audit — PASS**
-
-* All non-auth routes protected with `get_current_user`, `get_org_member`, or `require_role`
-* No unprotected endpoints found
-
-**2. SQL injection audit — PASS**
-
-* Zero raw SQL string interpolation (`f"...SELECT"`, `text(f"..."`) found across all services and routers
-
-**3. Cross-tenant isolation — 30/30 tests pass**
-
-* `tests/test_isolation.py` extended with task, wiki page, and notification isolation tests
-* Covers: orgs, projects, members, invitations, token security, member removal, tasks, pages, notifications
-
-**4. Rate limiting — LIVE**
-
-* `app/core/rate_limit.py` — Redis-based sliding window middleware
-* 100 requests/min per IP — returns 429 with `Retry-After` header
-* `/health` endpoint exempt
-* Fails open if Redis unavailable
-* `app.state.redis` initialised in lifespan, shared across middleware and app
-* Verified: 100 requests → pass, requests 101+ → 429
-
-**5. CORS review — PASS**
-
-* Default origins: `http://localhost:5173`, `http://localhost:3000` — no wildcards
-* Production origins set via `CORS_ORIGINS` env var
-* `allow_credentials=True` correct for JWT Authorization header usage
+* Endpoint protection audit — all routes protected ✅
+* SQL injection audit — zero raw interpolation ✅
+* Cross-tenant isolation — 30/30 tests pass ✅
+* Rate limiting — 100 req/min per IP, Redis sliding window, 429 + Retry-After ✅
+* CORS — no wildcards, production origins via env var ✅
 
 ### New Files
 
 * `app/core/rate_limit.py` — `RateLimitMiddleware`
 
-### Modified Files
-
-* `app/main.py` — added `RateLimitMiddleware`, Redis lifespan init/teardown
-* `app/routers/tasks.py` — moved all inline imports to top, extracted `_resolve_task_org` helpers
-* `app/routers/pages.py` — fixed `_verify_membership` to return 403 (not 404) for non-members
-* `app/schemas/project.py` — added `StatusRead` schema
-* `app/routers/projects.py` — added `GET /organizations/{slug}/projects/{id}/statuses` endpoint
-* `tests/test_isolation.py` — added sections 7 (tasks), 8 (wiki pages), 9 (notifications)
-
 ---
 
-## Phase 8.1 — Google OAuth 🔜 UP NEXT
+## Phase 8.1 — Google OAuth ✅
 
-### Overview
+**Commit:** committed
 
-Allow users to sign in / register with their Google account. Uses the ID token flow — frontend sends a Google `id_token` to the backend in a single POST; backend verifies it with Google's public keys and returns a standard `TokenResponse`.
+### New Files
 
-### Approach
+* `app/services/oauth_service.py`
 
-* Frontend sends Google `id_token` (from `@react-oauth/google`) to backend in one POST call
-* Backend verifies token with Google's public keys using `google-auth` library
-* Backend creates or finds user by `(oauth_provider, oauth_id)`
-* If email already exists with a password account → link the Google identity to existing account
-* Returns same `TokenResponse` as standard login (access_token + refresh_token)
-* OAuth users have `password_hash = NULL` — login endpoint returns clear error if they attempt password login
+### Modified Files
 
-### Tasks
+* `app/routers/auth.py` — added `POST /api/v1/auth/oauth/google`
+* `requirements.txt` — added `google-auth>=2.28.0`
 
-| # | Task                                                                                                                                                                                       | Status |
-| - | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------ |
-| 1 | Check Migration 005 — confirm exact columns already added (`oauth_provider`,`oauth_id`,`email_verified`, nullable `password_hash`). If missing, create Migration 019 to add them. | 🔜     |
-| 2 | Update `app/models/user.py`— add `oauth_provider`,`oauth_id`,`email_verified`fields if not present                                                                                | 🔜     |
-| 3 | Update `app/schemas/auth.py`— add `GoogleAuthRequest(id_token: str)`, update `UserRead`to include `oauth_provider`,`email_verified`                                             | 🔜     |
-| 4 | Create `app/services/oauth_service.py`—`verify_google_token(id_token)`using `google-auth`,`get_or_create_google_user(db, payload)`with account linking                            | 🔜     |
-| 5 | **POST /api/v1/auth/oauth/google**— verify id_token → get/create user → return TokenResponse. Test: valid token → JWT, invalid token → 401, existing email → linked            | 🔜     |
+### Account Linking Strategy
 
-### New Dependency
+1. Lookup by `(oauth_provider='google', oauth_id=sub)` → returning user
+2. Lookup by `email` → link Google to existing password account, preserve `password_hash`
+3. Neither → create new user with `password_hash=NULL`
+4. `is_active=False` → 403 before token issued
 
-* `google-auth>=2.28.0` — added to `requirements.txt`
-
-### Database Changes (if Migration 005 is incomplete)
-
-* `users.password_hash` → nullable
-* `users.oauth_provider` — `VARCHAR(20) NULL`
-* `users.oauth_id` — `VARCHAR(255) NULL`, indexed
-* `users.email_verified` — `BOOLEAN NOT NULL DEFAULT FALSE`
-* UNIQUE constraint on `(oauth_provider, oauth_id)`
+### Tests Passed ✅ — 10/10
 
 ---
 
@@ -520,7 +483,6 @@ Allow users to sign in / register with their Google account. Uses the ID token f
                                 → b2c3d4e5f6a1_create_pages
                                   → c3d4e5f6a1b2_create_task_page_links
                                     → d4e5f6a1b2c3_create_notifications  ← HEAD
-                                      → 019_add_google_oauth  (PENDING if needed)
 ```
 
 ---
@@ -531,24 +493,32 @@ Allow users to sign in / register with their Google account. Uses the ID token f
 * Business logic only in service layer
 * Async SQLAlchemy 2.0 (`select()`, `await db.execute()`)
 * Migrations use raw `op.execute()` SQL to avoid SQLAlchemy enum conflicts
-* Slug-less endpoints (`/tasks/{id}`, `/sprints/{id}`, `/wiki/pages/{id}`) use `get_current_user` + membership lookup in service
-* Slug endpoints (`/organizations/{slug}/...`) use `get_org_member` or `require_role` dependency
+* Slug-less endpoints use `get_current_user` + membership lookup in service
+* Slug endpoints use `get_org_member` or `require_role` dependency
 * `get_org_member` returns `tuple[Organization, OrgMember]` — unpack as `org, member = org_member`
-* Soft delete pattern used for: projects (is_archived), pages (is_deleted)
-* All errors return structured JSON: `{"code": "ERROR_CODE", "message": "..."}`
-* Celery tasks always create `asyncio.new_event_loop()` — never use `asyncio.run()` in forked workers
-* Rate limiting: 100 req/min per IP via Redis, exempt paths: `/health`
-* `app.state.redis` holds shared Redis connection initialised at lifespan startup
+* Soft delete: projects (`is_archived`), pages (`is_deleted`)
+* All errors: `{"code": "ERROR_CODE", "message": "..."}`
+* Celery tasks: always `asyncio.new_event_loop()` — never `asyncio.run()`
+* Rate limiting: 100 req/min per IP, exempt: `/health`
+* `app.state.redis` — shared Redis connection from lifespan
+* OAuth users: `password_hash=NULL`
+* Redis cache errors fail silently — never break requests
+* Filtered task requests always bypass cache
+* Cache keys: `board:{org_id}:{project_id}` (TTL 30s), `page_tree:{org_id}:{space_id}` (TTL 60s)
+* Cache serialization: `.model_dump_json()` / `.model_validate_json()`
 * Testing: PowerShell `Invoke-RestMethod` against `http://localhost:8001`
+* Test scripts: `docker cp` into container, run with `docker exec`
 
 ---
 
 ## Test Users (local dev)
 
-| Email              | Password    | Role               |
-| ------------------ | ----------- | ------------------ |
-| test@example.com   | password123 | Owner of test-org  |
-| member@example.com | password123 | Member of test-org |
+| Email              | Password    | Role               | Notes                         |
+| ------------------ | ----------- | ------------------ | ----------------------------- |
+| test@example.com   | password123 | Owner of test-org  | Google identity linked in 8.1 |
+| member@example.com | password123 | Member of test-org |                               |
+| brandnew@gmail.com | —          | No org             | OAuth-only, created in 8.1    |
+| inactive@gmail.com | —          | No org             | is_active=False, OAuth only   |
 
 ---
 
@@ -565,5 +535,7 @@ Allow users to sign in / register with their Google account. Uses the ID token f
 | Status APP: To Do        | `4b5c2923-1392-406a-a9b5-b7ca8ca821d9` |
 | Status APP: In Progress  | `88da0495-ffe0-49bd-ba74-ba2a7aefa77d` |
 | Status APP: Done         | `b4fa2b9c-f42b-4530-a5fc-24d1e0dcbe77` |
+| Wiki Space (General)     | `06e40cde-e967-4a1f-bec8-343dc06bb86e` |
 | User: test@example.com   | `5343fc4f-1621-408d-9b5a-758b43236cdf` |
 | User: member@example.com | `b84c9a6b-d13a-48b4-920f-3c2c44870d7b` |
+| User: brandnew@gmail.com | `d8c52138-34ff-406d-b45d-9b6742286413` |

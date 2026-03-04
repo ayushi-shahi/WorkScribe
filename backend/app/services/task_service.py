@@ -3,10 +3,16 @@ Task business logic.
 
 Handles task CRUD, comments, activity logging, label management.
 All queries scoped by org_id.
+
+Caching:
+  - Board (unfiltered task list): key=board:{org_id}:{project_id}, TTL=30s
+  - Invalidated on: create_task, update_task, delete_task, move_task,
+    bulk_update_positions
 """
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 from uuid import UUID
 
@@ -40,6 +46,28 @@ from app.schemas.task import (
     UserSummaryResponse,
 )
 
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Cache key helpers
+# ---------------------------------------------------------------------------
+
+def _board_cache_key(org_id: UUID, project_id: UUID) -> str:
+    """Redis key for the unfiltered board task list."""
+    return f"board:{org_id}:{project_id}"
+
+
+async def _invalidate_board_cache(redis: aioredis.Redis, org_id: UUID, project_id: UUID) -> None:
+    """Delete the board cache for a project. Fails silently."""
+    try:
+        await redis.delete(_board_cache_key(org_id, project_id))
+    except Exception as exc:
+        logger.warning("Failed to invalidate board cache: %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Notification helpers
+# ---------------------------------------------------------------------------
 
 def _queue_notification(
     org_id: UUID,
@@ -70,12 +98,6 @@ def _extract_mention_user_ids(body_json: dict[str, Any]) -> list[str]:
     """
     Recursively walk a Tiptap/ProseMirror JSON document and collect
     all user IDs referenced by mention nodes.
-
-    Mention node structure:
-    {
-        "type": "mention",
-        "attrs": {"id": "<user_id>", "label": "Display Name"}
-    }
     """
     user_ids: list[str] = []
 
@@ -118,9 +140,35 @@ class TaskService:
         sprint_id: UUID | None = None,
         search: str | None = None,
     ) -> TaskListResponse:
-        """List tasks for a project with optional filters. Scoped by org_id."""
+        """
+        List tasks for a project with optional filters. Scoped by org_id.
 
+        Caching: Only unfiltered requests (no query params) with default
+        pagination (skip=0, limit=25) are cached. Cache TTL = 30s.
+        Filtered requests always hit the DB.
+        """
         await self._get_project(project_id, org_id)
+
+        is_unfiltered = (
+            status_id is None
+            and assignee_id is None
+            and priority is None
+            and type is None
+            and sprint_id is None
+            and search is None
+            and skip == 0
+            and limit == 25
+        )
+
+        if is_unfiltered:
+            cache_key = _board_cache_key(org_id, project_id)
+            try:
+                cached = await self.redis.get(cache_key)
+                if cached:
+                    logger.debug("Board cache HIT: %s", cache_key)
+                    return TaskListResponse.model_validate_json(cached)
+            except Exception as exc:
+                logger.warning("Board cache GET failed: %s", exc)
 
         stmt = (
             select(Task)
@@ -173,7 +221,20 @@ class TaskService:
             for t in tasks
         ]
 
-        return TaskListResponse(tasks=items, total=total, skip=skip, limit=limit)
+        response = TaskListResponse(tasks=items, total=total, skip=skip, limit=limit)
+
+        if is_unfiltered:
+            try:
+                await self.redis.setex(
+                    _board_cache_key(org_id, project_id),
+                    30,
+                    response.model_dump_json(),
+                )
+                logger.debug("Board cache SET: %s", _board_cache_key(org_id, project_id))
+            except Exception as exc:
+                logger.warning("Board cache SET failed: %s", exc)
+
+        return response
 
     # -----------------------------------------------------------------------
     # Create Task
@@ -186,14 +247,6 @@ class TaskService:
         data: TaskCreateRequest,
         reporter: User,
     ) -> TaskDetailResponse:
-        """
-        Create a new task.
-
-        Uses SELECT ... FOR UPDATE on project_task_counters to safely
-        increment the task number without race conditions.
-
-        Dispatches TASK_ASSIGNED notification if assignee_id is set.
-        """
         project = await self._get_project(project_id, org_id)
         await self._get_status(data.status_id, project_id, org_id)
 
@@ -273,7 +326,6 @@ class TaskService:
 
         await self.db.flush()
 
-        # Notify assignee if assigned at creation (and not assigning to self)
         if data.assignee_id is not None and data.assignee_id != reporter.id:
             _queue_notification(
                 org_id=org_id,
@@ -285,6 +337,8 @@ class TaskService:
                 entity_id=task.id,
             )
 
+        await _invalidate_board_cache(self.redis, org_id, project_id)
+
         return await self.get_task(task.id, org_id)
 
     # -----------------------------------------------------------------------
@@ -292,7 +346,6 @@ class TaskService:
     # -----------------------------------------------------------------------
 
     async def get_task(self, task_id: UUID, org_id: UUID) -> TaskDetailResponse:
-        """Get full task detail. Scoped by org_id."""
         task = await self._get_task(task_id, org_id)
 
         labels = await self._load_labels_for_tasks([task.id])
@@ -371,17 +424,10 @@ class TaskService:
         data: TaskUpdateRequest,
         actor: User,
     ) -> TaskDetailResponse:
-        """
-        Partially update a task.
-
-        Logs every changed field to activity_log with old → new values.
-        Dispatches TASK_ASSIGNED on assignee change.
-        Dispatches TASK_DONE when status moves to a 'done' category.
-        """
         task = await self._get_task(task_id, org_id)
+        project_id = task.project_id
         changes: dict[str, dict[str, Any]] = {}
 
-        # Track old values for notification decisions
         old_assignee_id = task.assignee_id
         old_status_id = task.status_id
 
@@ -458,7 +504,6 @@ class TaskService:
 
         await self.db.flush()
 
-        # Notify new assignee (if changed and not assigning to self)
         if (
             data.assignee_id is not None
             and data.assignee_id != old_assignee_id
@@ -475,8 +520,6 @@ class TaskService:
                 entity_id=task.id,
             )
 
-        # Notify reporter when status moves to 'done' category
-        # (only if reporter is not the actor making the change)
         if (
             data.status_id is not None
             and data.status_id != old_status_id
@@ -497,6 +540,8 @@ class TaskService:
                     entity_id=task.id,
                 )
 
+        await _invalidate_board_cache(self.redis, org_id, project_id)
+
         return await self.get_task(task.id, org_id)
 
     # -----------------------------------------------------------------------
@@ -510,8 +555,8 @@ class TaskService:
         actor: User,
         is_admin: bool = False,
     ) -> None:
-        """Delete a task. Members can only delete their own tasks."""
         task = await self._get_task(task_id, org_id)
+        project_id = task.project_id
 
         if not is_admin and task.reporter_id != actor.id:
             raise HTTPException(
@@ -522,8 +567,10 @@ class TaskService:
         await self.db.delete(task)
         await self.db.flush()
 
+        await _invalidate_board_cache(self.redis, org_id, project_id)
+
     # -----------------------------------------------------------------------
-    # Move Task (board drag)
+    # Move Task
     # -----------------------------------------------------------------------
 
     async def move_task(
@@ -533,11 +580,8 @@ class TaskService:
         data: TaskMoveRequest,
         actor: User,
     ) -> TaskDetailResponse:
-        """
-        Update task status and position in one call.
-        Dispatches TASK_DONE if moved to a done-category status.
-        """
         task = await self._get_task(task_id, org_id)
+        project_id = task.project_id
         old_status_id = task.status_id
 
         new_status = await self._get_status(data.status_id, task.project_id, org_id)
@@ -573,6 +617,8 @@ class TaskService:
                         entity_id=task.id,
                     )
 
+        await _invalidate_board_cache(self.redis, org_id, project_id)
+
         return await self.get_task(task.id, org_id)
 
     # -----------------------------------------------------------------------
@@ -584,14 +630,27 @@ class TaskService:
         org_id: UUID,
         data: BulkPositionRequest,
     ) -> None:
-        """Batch update task positions. All tasks must belong to org."""
+        affected_project_ids: set[UUID] = set()
+
         for item in data.positions:
             await self.db.execute(
                 update(Task)
                 .where(Task.id == item.task_id, Task.org_id == org_id)
                 .values(position=item.position)
             )
+            task_result = await self.db.execute(
+                select(Task.project_id).where(
+                    Task.id == item.task_id, Task.org_id == org_id
+                )
+            )
+            row = task_result.scalar_one_or_none()
+            if row:
+                affected_project_ids.add(row)
+
         await self.db.flush()
+
+        for project_id in affected_project_ids:
+            await _invalidate_board_cache(self.redis, org_id, project_id)
 
     # -----------------------------------------------------------------------
     # Comments
@@ -600,7 +659,6 @@ class TaskService:
     async def list_comments(
         self, task_id: UUID, org_id: UUID
     ) -> CommentListResponse:
-        """List comments for a task."""
         await self._get_task(task_id, org_id)
 
         result = await self.db.execute(
@@ -647,10 +705,6 @@ class TaskService:
         data: CommentCreateRequest,
         author: User,
     ) -> CommentResponse:
-        """
-        Create a comment on a task.
-        Parses @mentions from body_json and dispatches MENTION notifications.
-        """
         task = await self._get_task(task_id, org_id)
 
         comment = Comment(
@@ -661,17 +715,14 @@ class TaskService:
         self.db.add(comment)
         await self.db.flush()
 
-        # Dispatch MENTION notifications for each mentioned user
         mention_user_ids = _extract_mention_user_ids(data.body_json)
         for uid_str in set(mention_user_ids):
             try:
                 uid = UUID(uid_str)
             except ValueError:
                 continue
-            # Don't notify the author if they mention themselves
             if uid == author.id:
                 continue
-            # Load project key for notification title
             project = await self._get_project(task.project_id, org_id)
             _queue_notification(
                 org_id=org_id,
@@ -707,7 +758,6 @@ class TaskService:
         actor: User,
         is_admin: bool = False,
     ) -> CommentResponse:
-        """Edit a comment. Only author or admin can edit."""
         comment = await self._get_comment(comment_id, org_id)
 
         if not is_admin and comment.author_id != actor.id:
@@ -748,7 +798,6 @@ class TaskService:
         actor: User,
         is_admin: bool = False,
     ) -> None:
-        """Delete a comment. Only author or admin can delete."""
         comment = await self._get_comment(comment_id, org_id)
 
         if not is_admin and comment.author_id != actor.id:
@@ -767,7 +816,6 @@ class TaskService:
     async def list_activity(
         self, task_id: UUID, org_id: UUID
     ) -> ActivityListResponse:
-        """List activity log for a task, reverse chronological."""
         await self._get_task(task_id, org_id)
 
         result = await self.db.execute(
@@ -860,7 +908,6 @@ class TaskService:
         return s
 
     async def _get_comment(self, comment_id: UUID, org_id: UUID) -> Comment:
-        """Load comment and verify it belongs to a task in the org."""
         result = await self.db.execute(
             select(Comment)
             .join(Task, Comment.task_id == Task.id)
@@ -875,7 +922,6 @@ class TaskService:
         return comment
 
     async def _verify_user_in_org(self, user_id: UUID, org_id: UUID) -> None:
-        """Verify a user is a member of the org."""
         from app.models.member import OrgMember
         result = await self.db.execute(
             select(OrgMember).where(
@@ -892,7 +938,6 @@ class TaskService:
     async def _load_labels_for_tasks(
         self, task_ids: list[UUID]
     ) -> dict[UUID, list[LabelResponse]]:
-        """Load all labels for a list of task IDs in a single query."""
         if not task_ids:
             return {}
 
@@ -920,7 +965,6 @@ class TaskService:
         project_id: UUID,
         org_id: UUID,
     ) -> None:
-        """Replace all labels on a task with the given label_ids."""
         existing = await self.db.execute(
             select(TaskLabel).where(TaskLabel.task_id == task_id)
         )
@@ -953,7 +997,6 @@ class TaskService:
         old_value: dict[str, Any] | None = None,
         new_value: dict[str, Any] | None = None,
     ) -> None:
-        """Append an activity log entry."""
         log = ActivityLog(
             org_id=org_id,
             task_id=task_id,

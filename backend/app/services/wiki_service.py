@@ -3,10 +3,15 @@ Wiki business logic.
 
 Handles wiki spaces and pages (create, read, update, delete, move).
 All queries scoped by org_id.
+
+Caching:
+  - Page tree: key=page_tree:{org_id}:{space_id}, TTL=60s
+  - Invalidated on: create_page, update_page, delete_page, move_page
 """
 
 from __future__ import annotations
 
+import logging
 import uuid
 from uuid import UUID
 
@@ -31,7 +36,28 @@ from app.schemas.wiki import (
     WikiSpaceUpdateRequest,
 )
 
+logger = logging.getLogger(__name__)
+
 MAX_PAGE_DEPTH = 5
+
+
+# ---------------------------------------------------------------------------
+# Cache key helpers
+# ---------------------------------------------------------------------------
+
+def _page_tree_cache_key(org_id: UUID, space_id: UUID) -> str:
+    """Redis key for the page tree of a space."""
+    return f"page_tree:{org_id}:{space_id}"
+
+
+async def _invalidate_page_tree_cache(
+    redis: aioredis.Redis, org_id: UUID, space_id: UUID
+) -> None:
+    """Delete the page tree cache for a space. Fails silently."""
+    try:
+        await redis.delete(_page_tree_cache_key(org_id, space_id))
+    except Exception as exc:
+        logger.warning("Failed to invalidate page tree cache: %s", exc)
 
 
 class WikiService:
@@ -67,7 +93,6 @@ class WikiService:
     async def create_space(
         self, org_id: UUID, user: User, data: WikiSpaceCreateRequest
     ) -> WikiSpaceResponse:
-        # Check key uniqueness within org
         existing = await self.db.execute(
             select(WikiSpace).where(
                 WikiSpace.org_id == org_id,
@@ -130,8 +155,22 @@ class WikiService:
     # -----------------------------------------------------------------------
 
     async def list_pages(self, space_id: UUID, org_id: UUID) -> PageListResponse:
-        # Verify space belongs to org
+        """
+        Return the page tree for a space.
+
+        Checks Redis cache first (TTL=60s). On cache miss, queries DB,
+        builds the tree, stores result in cache, and returns it.
+        """
         await self._get_space(space_id, org_id)
+
+        cache_key = _page_tree_cache_key(org_id, space_id)
+        try:
+            cached = await self.redis.get(cache_key)
+            if cached:
+                logger.debug("Page tree cache HIT: %s", cache_key)
+                return PageListResponse.model_validate_json(cached)
+        except Exception as exc:
+            logger.warning("Page tree cache GET failed: %s", exc)
 
         result = await self.db.execute(
             select(Page)
@@ -145,7 +184,15 @@ class WikiService:
         pages = list(result.scalars().all())
 
         tree = self._build_tree(pages)
-        return PageListResponse(pages=tree, total=len(pages))
+        response = PageListResponse(pages=tree, total=len(pages))
+
+        try:
+            await self.redis.setex(cache_key, 60, response.model_dump_json())
+            logger.debug("Page tree cache SET: %s", cache_key)
+        except Exception as exc:
+            logger.warning("Page tree cache SET failed: %s", exc)
+
+        return response
 
     # -----------------------------------------------------------------------
     # Pages — Create
@@ -154,7 +201,7 @@ class WikiService:
     async def create_page(
         self, space_id: UUID, org_id: UUID, user: User, data: PageCreateRequest
     ) -> PageResponse:
-        # Verify space
+        """Create a page. Invalidates page tree cache for the space."""
         await self._get_space(space_id, org_id)
 
         depth = 0
@@ -172,7 +219,6 @@ class WikiService:
                     detail={"code": "MAX_DEPTH_EXCEEDED", "message": f"Pages cannot be nested more than {MAX_PAGE_DEPTH} levels deep"},
                 )
 
-        # Get next position among siblings
         position = await self._next_position(space_id, data.parent_page_id, org_id)
 
         page = Page(
@@ -191,6 +237,8 @@ class WikiService:
         await self.db.flush()
         await self.db.refresh(page)
 
+        await _invalidate_page_tree_cache(self.redis, org_id, space_id)
+
         return self._page_to_response(page)
 
     # -----------------------------------------------------------------------
@@ -208,7 +256,9 @@ class WikiService:
     async def update_page(
         self, page_id: UUID, org_id: UUID, user: User, data: PageUpdateRequest
     ) -> PageResponse:
+        """Update page. Invalidates page tree cache (title/icon may have changed)."""
         page = await self._get_page(page_id, org_id)
+        space_id = page.space_id
 
         if data.title is not None:
             page.title = data.title
@@ -222,6 +272,8 @@ class WikiService:
         await self.db.flush()
         await self.db.refresh(page)
 
+        await _invalidate_page_tree_cache(self.redis, org_id, space_id)
+
         return self._page_to_response(page)
 
     # -----------------------------------------------------------------------
@@ -231,11 +283,12 @@ class WikiService:
     async def move_page(
         self, page_id: UUID, org_id: UUID, user: User, data: PageMoveRequest
     ) -> PageResponse:
+        """Move page in tree. Invalidates page tree cache."""
         page = await self._get_page(page_id, org_id)
+        space_id = page.space_id
 
         new_depth = 0
         if data.parent_page_id is not None:
-            # Cannot move page under itself
             if data.parent_page_id == page_id:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
@@ -262,6 +315,8 @@ class WikiService:
         await self.db.flush()
         await self.db.refresh(page)
 
+        await _invalidate_page_tree_cache(self.redis, org_id, space_id)
+
         return self._page_to_response(page)
 
     # -----------------------------------------------------------------------
@@ -269,10 +324,14 @@ class WikiService:
     # -----------------------------------------------------------------------
 
     async def delete_page(self, page_id: UUID, org_id: UUID) -> None:
+        """Soft delete page and descendants. Invalidates page tree cache."""
         page = await self._get_page(page_id, org_id)
-        # Soft delete the page and all its descendants
+        space_id = page.space_id
+
         await self._soft_delete_recursive(page_id, org_id)
         await self.db.flush()
+
+        await _invalidate_page_tree_cache(self.redis, org_id, space_id)
 
     # -----------------------------------------------------------------------
     # Internal helpers
@@ -339,7 +398,6 @@ class WikiService:
             .where(Page.id == page_id, Page.org_id == org_id)
             .values(is_deleted=True)
         )
-        # Get children and recurse
         children_result = await self.db.execute(
             select(Page.id).where(
                 Page.parent_page_id == page_id,

@@ -20,6 +20,7 @@ from app.schemas.auth import (
     LoginRequest,
     LogoutRequest,
     MeResponse,
+    OAuthGoogleRequest,
     RefreshRequest,
     RegisterRequest,
     ResetPasswordRequest,
@@ -27,6 +28,11 @@ from app.schemas.auth import (
 )
 from app.schemas.organization import OrganizationResponse
 from app.services.auth_service import AuthService
+from app.services.oauth_service import (
+    build_token_response,
+    get_or_create_google_user,
+    verify_google_id_token,
+)
 from app.services.organization_service import OrganizationService
 
 router = APIRouter()
@@ -176,6 +182,76 @@ async def get_me(
     service: AuthService = Depends(get_auth_service),
 ) -> MeResponse:
     return await service.get_me(current_user)
+
+
+# ---------------------------------------------------------------------------
+# Google OAuth
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/oauth/google",
+    response_model=TokenResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Sign in or register with Google ID token",
+)
+async def oauth_google(
+    data: OAuthGoogleRequest,
+    db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+) -> TokenResponse:
+    """
+    Authenticate using a Google ID token obtained from the frontend OAuth flow.
+
+    Flow:
+    1. Frontend obtains a Google ID token via @react-oauth/google
+    2. Frontend POSTs the id_token to this endpoint
+    3. Backend verifies the token with Google's public keys
+    4. Backend finds or creates a user (with account linking if email exists)
+    5. Backend returns a standard TokenResponse (same shape as /login)
+
+    Error codes:
+    - GOOGLE_AUTH_NOT_CONFIGURED: GOOGLE_CLIENT_ID env var not set
+    - INVALID_GOOGLE_TOKEN: Token failed verification
+    - ACCOUNT_INACTIVE: User account is deactivated
+    """
+    # Guard: GOOGLE_CLIENT_ID must be configured
+    from app.core.config import settings
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "code": "GOOGLE_AUTH_NOT_CONFIGURED",
+                "message": "Google OAuth is not configured on this server",
+            },
+        )
+
+    # Verify the Google ID token
+    try:
+        payload = verify_google_id_token(data.id_token)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "INVALID_GOOGLE_TOKEN",
+                "message": str(exc),
+            },
+        )
+
+    # Get or create user (with account linking)
+    user, _is_new = await get_or_create_google_user(db=db, payload=payload)
+
+    # Guard: account must be active
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "ACCOUNT_INACTIVE",
+                "message": "This account has been deactivated",
+            },
+        )
+
+    # Issue JWT tokens (identical shape to /login response)
+    return await build_token_response(user=user, redis=redis)
 
 
 # ---------------------------------------------------------------------------
