@@ -149,6 +149,15 @@ class TaskListResponse(BaseModel):
     limit: int
 
 
+class BacklogListResponse(BaseModel):
+    """Response for GET /projects/{project_id}/backlog — tasks with no sprint."""
+
+    tasks: list[TaskListItem]
+    total: int
+    skip: int
+    limit: int
+
+
 # ---------------------------------------------------------------------------
 # Task detail (full — for task panel)
 # ---------------------------------------------------------------------------
@@ -212,8 +221,12 @@ class CommentResponse(BaseModel):
 
 
 class CommentListResponse(BaseModel):
+    """Response for GET /tasks/{task_id}/comments."""
+
     comments: list[CommentResponse]
     total: int
+    skip: int
+    limit: int
 
 
 # ---------------------------------------------------------------------------
@@ -237,5 +250,9 @@ class ActivityResponse(BaseModel):
 
 
 class ActivityListResponse(BaseModel):
+    """Response for GET /tasks/{task_id}/activity."""
+
     activities: list[ActivityResponse]
     total: int
+    skip: int
+    limit: int

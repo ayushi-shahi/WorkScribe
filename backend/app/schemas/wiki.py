@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 
 class WikiSpaceCreateRequest(BaseModel):
     """Request body for POST /organizations/{slug}/wiki/spaces."""
+
     name: str = Field(..., min_length=1, max_length=255)
     key: str = Field(..., min_length=1, max_length=10, pattern=r"^[A-Z0-9]+$")
     description: str | None = None
@@ -25,6 +26,7 @@ class WikiSpaceCreateRequest(BaseModel):
 
 class WikiSpaceUpdateRequest(BaseModel):
     """Request body for PATCH /wiki/spaces/{space_id}."""
+
     name: str | None = Field(None, min_length=1, max_length=255)
     description: str | None = None
     icon_emoji: str | None = None
@@ -32,6 +34,7 @@ class WikiSpaceUpdateRequest(BaseModel):
 
 class WikiSpaceResponse(BaseModel):
     """Wiki space detail response."""
+
     id: uuid.UUID
     org_id: uuid.UUID
     name: str
@@ -48,8 +51,11 @@ class WikiSpaceResponse(BaseModel):
 
 class WikiSpaceListResponse(BaseModel):
     """Response for GET /organizations/{slug}/wiki/spaces."""
+
     spaces: list[WikiSpaceResponse]
     total: int
+    skip: int
+    limit: int
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +64,7 @@ class WikiSpaceListResponse(BaseModel):
 
 class PageCreateRequest(BaseModel):
     """Request body for POST /wiki/spaces/{space_id}/pages."""
+
     title: str = Field(..., min_length=1, max_length=500)
     parent_page_id: uuid.UUID | None = None
     icon_emoji: str | None = None
@@ -66,6 +73,7 @@ class PageCreateRequest(BaseModel):
 
 class PageUpdateRequest(BaseModel):
     """Request body for PATCH /wiki/pages/{page_id}."""
+
     title: str | None = Field(None, min_length=1, max_length=500)
     content_json: dict[str, Any] | None = None
     icon_emoji: str | None = None
@@ -73,12 +81,14 @@ class PageUpdateRequest(BaseModel):
 
 class PageMoveRequest(BaseModel):
     """Request body for POST /wiki/pages/{page_id}/move."""
+
     parent_page_id: uuid.UUID | None = None
     position: int = Field(..., ge=0)
 
 
 class PageTreeItem(BaseModel):
     """Lightweight page for tree view."""
+
     id: uuid.UUID
     space_id: uuid.UUID
     parent_page_id: uuid.UUID | None
@@ -97,6 +107,7 @@ PageTreeItem.model_rebuild()
 
 class PageResponse(BaseModel):
     """Full page detail response."""
+
     id: uuid.UUID
     org_id: uuid.UUID
     space_id: uuid.UUID
@@ -116,5 +127,6 @@ class PageResponse(BaseModel):
 
 class PageListResponse(BaseModel):
     """Response for GET /wiki/spaces/{space_id}/pages (full tree)."""
+
     pages: list[PageTreeItem]
     total: int

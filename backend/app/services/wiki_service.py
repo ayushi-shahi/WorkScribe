@@ -20,7 +20,6 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.member import OrgMember, OrgRole
 from app.models.user import User
 from app.models.wiki import Page, WikiSpace
 from app.schemas.wiki import (
@@ -71,11 +70,26 @@ class WikiService:
     # Wiki Space — List
     # -----------------------------------------------------------------------
 
-    async def list_spaces(self, org_id: UUID) -> WikiSpaceListResponse:
+    async def list_spaces(
+        self,
+        org_id: UUID,
+        skip: int = 0,
+        limit: int = 50,
+    ) -> WikiSpaceListResponse:
+        """List wiki spaces for an org with pagination."""
+        total_result = await self.db.execute(
+            select(func.count()).select_from(WikiSpace).where(
+                WikiSpace.org_id == org_id
+            )
+        )
+        total = total_result.scalar_one()
+
         result = await self.db.execute(
             select(WikiSpace)
             .where(WikiSpace.org_id == org_id)
             .order_by(WikiSpace.created_at)
+            .offset(skip)
+            .limit(limit)
         )
         spaces = list(result.scalars().all())
 
@@ -84,7 +98,7 @@ class WikiService:
             page_count = await self._get_page_count(space.id, org_id)
             items.append(self._space_to_response(space, page_count))
 
-        return WikiSpaceListResponse(spaces=items, total=len(items))
+        return WikiSpaceListResponse(spaces=items, total=total, skip=skip, limit=limit)
 
     # -----------------------------------------------------------------------
     # Wiki Space — Create
@@ -146,7 +160,25 @@ class WikiService:
     # -----------------------------------------------------------------------
 
     async def delete_space(self, space_id: UUID, org_id: UUID) -> None:
+        """
+        Delete a wiki space.
+
+        Raises 409 SPACE_NOT_EMPTY if the space contains any non-deleted pages.
+        User must delete all pages manually before deleting the space.
+        No force flag — deletion is always explicit.
+        """
         space = await self._get_space(space_id, org_id)
+
+        page_count = await self._get_page_count(space_id, org_id)
+        if page_count > 0:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "SPACE_NOT_EMPTY",
+                    "message": f"Space contains {page_count} page{'s' if page_count != 1 else ''}. Delete all pages first.",
+                },
+            )
+
         await self.db.delete(space)
         await self.db.flush()
 
@@ -323,12 +355,43 @@ class WikiService:
     # Pages — Delete (soft)
     # -----------------------------------------------------------------------
 
-    async def delete_page(self, page_id: UUID, org_id: UUID) -> None:
-        """Soft delete page and descendants. Invalidates page tree cache."""
+    async def delete_page(
+        self,
+        page_id: UUID,
+        org_id: UUID,
+        force: bool = False,
+    ) -> None:
+        """
+        Soft delete a page.
+
+        Without ?force=true: raises 409 PAGE_HAS_CHILDREN if the page has
+        any non-deleted children. User must delete children first.
+
+        With ?force=true: cascade soft-deletes the page and all descendants.
+        """
         page = await self._get_page(page_id, org_id)
         space_id = page.space_id
 
-        await self._soft_delete_recursive(page_id, org_id)
+        if not force:
+            child_count = await self._get_child_count(page_id, org_id)
+            if child_count > 0:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "code": "PAGE_HAS_CHILDREN",
+                        "message": f"Page has {child_count} child page{'s' if child_count != 1 else ''}. Use ?force=true to delete with all children.",
+                    },
+                )
+            # No children — soft delete only this page
+            await self.db.execute(
+                update(Page)
+                .where(Page.id == page_id, Page.org_id == org_id)
+                .values(is_deleted=True)
+            )
+        else:
+            # Cascade soft delete this page and all descendants
+            await self._soft_delete_recursive(page_id, org_id)
+
         await self.db.flush()
 
         await _invalidate_page_tree_cache(self.redis, org_id, space_id)
@@ -372,6 +435,17 @@ class WikiService:
         result = await self.db.execute(
             select(func.count(Page.id)).where(
                 Page.space_id == space_id,
+                Page.org_id == org_id,
+                Page.is_deleted == False,
+            )
+        )
+        return result.scalar_one()
+
+    async def _get_child_count(self, page_id: UUID, org_id: UUID) -> int:
+        """Count direct non-deleted children of a page."""
+        result = await self.db.execute(
+            select(func.count(Page.id)).where(
+                Page.parent_page_id == page_id,
                 Page.org_id == org_id,
                 Page.is_deleted == False,
             )

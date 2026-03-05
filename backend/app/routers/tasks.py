@@ -18,10 +18,10 @@ from app.core.dependencies import get_current_user, get_org_member, get_redis, r
 from app.models.member import OrgMember, OrgRole
 from app.models.organization import Organization
 from app.models.task import Task
-from app.models.member import OrgMember
 from app.models.user import User
 from app.schemas.task import (
     ActivityListResponse,
+    BacklogListResponse,
     BulkPositionRequest,
     CommentCreateRequest,
     CommentListResponse,
@@ -134,6 +134,41 @@ async def list_tasks(
         priority=priority,
         type=type,
         sprint_id=sprint_id,
+        search=search,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Backlog
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/organizations/{slug}/projects/{project_id}/backlog",
+    response_model=BacklogListResponse,
+    summary="List backlog tasks (no sprint assigned)",
+)
+async def list_backlog(
+    project_id: UUID,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=25, ge=1, le=100),
+    status_id: UUID | None = Query(default=None),
+    assignee_id: UUID | None = Query(default=None),
+    priority: str | None = Query(default=None, pattern="^(urgent|high|medium|low|none)$"),
+    type: str | None = Query(default=None, pattern="^(story|bug|task|subtask)$"),
+    search: str | None = Query(default=None, max_length=200),
+    org_and_member: tuple[Organization, OrgMember] = Depends(get_org_member),
+    service: TaskService = Depends(get_task_service),
+) -> BacklogListResponse:
+    org, _ = org_and_member
+    return await service.list_backlog(
+        project_id=project_id,
+        org_id=org.id,
+        skip=skip,
+        limit=limit,
+        status_id=status_id,
+        assignee_id=assignee_id,
+        priority=priority,
+        type=type,
         search=search,
     )
 
@@ -275,12 +310,14 @@ async def bulk_update_positions(
 )
 async def list_comments(
     task_id: UUID,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=100),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     service: TaskService = Depends(get_task_service),
 ) -> CommentListResponse:
     task, org_id = await _resolve_task_org(task_id, current_user, db)
-    return await service.list_comments(task_id, org_id)
+    return await service.list_comments(task_id, org_id, skip=skip, limit=limit)
 
 
 # ---------------------------------------------------------------------------
@@ -359,9 +396,11 @@ async def delete_comment(
 )
 async def list_activity(
     task_id: UUID,
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=100),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     service: TaskService = Depends(get_task_service),
 ) -> ActivityListResponse:
     task, org_id = await _resolve_task_org(task_id, current_user, db)
-    return await service.list_activity(task_id, org_id)
+    return await service.list_activity(task_id, org_id, skip=skip, limit=limit)

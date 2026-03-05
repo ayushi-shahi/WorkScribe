@@ -7,7 +7,7 @@ from __future__ import annotations
 from uuid import UUID
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -117,11 +117,13 @@ async def _get_org_id_for_page(
     summary="List wiki spaces for an organization",
 )
 async def list_spaces(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=100),
     org_and_member: tuple[Organization, OrgMember] = Depends(get_org_member),
     service: WikiService = Depends(get_wiki_service),
 ) -> WikiSpaceListResponse:
     org, _ = org_and_member
-    return await service.list_spaces(org.id)
+    return await service.list_spaces(org.id, skip=skip, limit=limit)
 
 
 @router.post(
@@ -253,13 +255,14 @@ async def move_page(
 @router.delete(
     "/wiki/pages/{page_id}",
     status_code=status.HTTP_200_OK,
-    summary="Delete a page (soft delete)",
+    summary="Delete a page (soft delete). Use ?force=true to cascade delete children.",
 )
 async def delete_page(
     page_id: UUID,
+    force: bool = Query(default=False),
     current_user: User = Depends(get_current_user),
     service: WikiService = Depends(get_wiki_service),
 ) -> dict:
     org_id = await _get_org_id_for_page(page_id, current_user, service)
-    await service.delete_page(page_id, org_id)
+    await service.delete_page(page_id, org_id, force=force)
     return {}

@@ -10,6 +10,7 @@ from uuid import UUID
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, status
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -34,6 +35,14 @@ def get_sprint_service(
     redis: aioredis.Redis = Depends(get_redis),
 ) -> SprintService:
     return SprintService(db=db, redis=redis)
+
+
+# ---------------------------------------------------------------------------
+# Request bodies
+# ---------------------------------------------------------------------------
+
+class SprintTaskRequest(BaseModel):
+    task_id: UUID
 
 
 # ---------------------------------------------------------------------------
@@ -145,3 +154,41 @@ async def delete_sprint(
 ) -> dict:
     await service.delete_sprint(sprint_id, current_user)
     return {}
+
+
+# ---------------------------------------------------------------------------
+# Add Task to Sprint
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/sprints/{sprint_id}/tasks",
+    response_model=SprintResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Assign a task to a sprint",
+)
+async def add_task_to_sprint(
+    sprint_id: UUID,
+    data: SprintTaskRequest,
+    current_user: User = Depends(get_current_user),
+    service: SprintService = Depends(get_sprint_service),
+) -> SprintResponse:
+    return await service.add_task_to_sprint(sprint_id, data.task_id, current_user)
+
+
+# ---------------------------------------------------------------------------
+# Remove Task from Sprint
+# ---------------------------------------------------------------------------
+
+@router.delete(
+    "/sprints/{sprint_id}/tasks/{task_id}",
+    response_model=SprintResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Remove a task from a sprint (moves to backlog)",
+)
+async def remove_task_from_sprint(
+    sprint_id: UUID,
+    task_id: UUID,
+    current_user: User = Depends(get_current_user),
+    service: SprintService = Depends(get_sprint_service),
+) -> SprintResponse:
+    return await service.remove_task_from_sprint(sprint_id, task_id, current_user)

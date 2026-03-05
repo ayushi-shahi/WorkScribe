@@ -28,6 +28,19 @@ from app.schemas.sprint import (
 )
 
 
+def _board_cache_key(org_id: UUID, project_id: UUID) -> str:
+    return f"board:{org_id}:{project_id}"
+
+
+async def _invalidate_board_cache(
+    redis: aioredis.Redis, org_id: UUID, project_id: UUID
+) -> None:
+    try:
+        await redis.delete(_board_cache_key(org_id, project_id))
+    except Exception:
+        pass
+
+
 class SprintService:
     """Handles all sprint operations."""
 
@@ -303,16 +316,113 @@ class SprintService:
         await self.db.flush()
 
     # -----------------------------------------------------------------------
+    # Add Task to Sprint
+    # -----------------------------------------------------------------------
+
+    async def add_task_to_sprint(
+        self,
+        sprint_id: UUID,
+        task_id: UUID,
+        user: User,
+    ) -> SprintResponse:
+        """
+        Assign a task to a sprint.
+
+        Validates:
+        - Sprint exists and user is an org member
+        - Task exists in the same org and project as the sprint
+        - Task is not already in this sprint
+
+        Returns updated SprintResponse with refreshed task counts.
+        """
+        sprint, org_id = await self._get_sprint_for_user(sprint_id, user)
+
+        task = await self._get_task_in_sprint_project(task_id, sprint, org_id)
+
+        if task.sprint_id == sprint_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "TASK_ALREADY_IN_SPRINT", "message": "Task is already assigned to this sprint"},
+            )
+
+        task.sprint_id = sprint_id
+        await self.db.flush()
+
+        await _invalidate_board_cache(self.redis, org_id, sprint.project_id)
+
+        task_count, completed_count = await self._get_sprint_task_counts(sprint_id, org_id)
+
+        return SprintResponse(
+            id=sprint.id,
+            org_id=sprint.org_id,
+            project_id=sprint.project_id,
+            name=sprint.name,
+            goal=sprint.goal,
+            status=sprint.status.value,
+            start_date=sprint.start_date,
+            end_date=sprint.end_date,
+            created_at=sprint.created_at,
+            updated_at=sprint.updated_at,
+            task_count=task_count,
+            completed_task_count=completed_count,
+        )
+
+    # -----------------------------------------------------------------------
+    # Remove Task from Sprint
+    # -----------------------------------------------------------------------
+
+    async def remove_task_from_sprint(
+        self,
+        sprint_id: UUID,
+        task_id: UUID,
+        user: User,
+    ) -> SprintResponse:
+        """
+        Remove a task from a sprint (moves it to backlog).
+
+        Validates:
+        - Sprint exists and user is an org member
+        - Task exists and is currently assigned to this sprint
+        """
+        sprint, org_id = await self._get_sprint_for_user(sprint_id, user)
+
+        task = await self._get_task_in_sprint_project(task_id, sprint, org_id)
+
+        if task.sprint_id != sprint_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "TASK_NOT_IN_SPRINT", "message": "Task is not assigned to this sprint"},
+            )
+
+        task.sprint_id = None
+        await self.db.flush()
+
+        await _invalidate_board_cache(self.redis, org_id, sprint.project_id)
+
+        task_count, completed_count = await self._get_sprint_task_counts(sprint_id, org_id)
+
+        return SprintResponse(
+            id=sprint.id,
+            org_id=sprint.org_id,
+            project_id=sprint.project_id,
+            name=sprint.name,
+            goal=sprint.goal,
+            status=sprint.status.value,
+            start_date=sprint.start_date,
+            end_date=sprint.end_date,
+            created_at=sprint.created_at,
+            updated_at=sprint.updated_at,
+            task_count=task_count,
+            completed_task_count=completed_count,
+        )
+
+    # -----------------------------------------------------------------------
     # Internal helpers
     # -----------------------------------------------------------------------
 
     async def _get_sprint_for_user(
         self, sprint_id: UUID, user: User, require_admin: bool = False
     ) -> tuple[Sprint, UUID]:
-        """
-        Load sprint and verify user is a member of its org.
-        Returns (sprint, org_id).
-        """
         result = await self.db.execute(
             select(Sprint).where(Sprint.id == sprint_id)
         )
@@ -323,7 +433,6 @@ class SprintService:
                 detail={"code": "SPRINT_NOT_FOUND", "message": "Sprint not found"},
             )
 
-        # Verify user membership
         member_result = await self.db.execute(
             select(OrgMember).where(
                 OrgMember.org_id == sprint.org_id,
@@ -359,6 +468,25 @@ class SprintService:
                 detail={"code": "SPRINT_NOT_FOUND", "message": "Sprint not found"},
             )
         return sprint
+
+    async def _get_task_in_sprint_project(
+        self, task_id: UUID, sprint: Sprint, org_id: UUID
+    ) -> Task:
+        """Load task, verify it belongs to the same org and project as the sprint."""
+        result = await self.db.execute(
+            select(Task).where(
+                Task.id == task_id,
+                Task.org_id == org_id,
+                Task.project_id == sprint.project_id,
+            )
+        )
+        task = result.scalar_one_or_none()
+        if task is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "TASK_NOT_FOUND", "message": "Task not found in this sprint's project"},
+            )
+        return task
 
     async def _get_sprint_task_counts(
         self, sprint_id: UUID, org_id: UUID

@@ -31,6 +31,7 @@ from app.models.user import User
 from app.schemas.task import (
     ActivityListResponse,
     ActivityResponse,
+    BacklogListResponse,
     BulkPositionRequest,
     CommentCreateRequest,
     CommentListResponse,
@@ -235,6 +236,84 @@ class TaskService:
                 logger.warning("Board cache SET failed: %s", exc)
 
         return response
+
+    # -----------------------------------------------------------------------
+    # Backlog
+    # -----------------------------------------------------------------------
+
+    async def list_backlog(
+        self,
+        project_id: UUID,
+        org_id: UUID,
+        skip: int = 0,
+        limit: int = 25,
+        status_id: UUID | None = None,
+        assignee_id: UUID | None = None,
+        priority: str | None = None,
+        type: str | None = None,
+        search: str | None = None,
+    ) -> BacklogListResponse:
+        """
+        List tasks with no sprint (sprint_id IS NULL) for a project.
+        Scoped by org_id. Supports same filters as list_tasks except sprint_id.
+        Always hits DB — no cache (backlog changes frequently during planning).
+        """
+        await self._get_project(project_id, org_id)
+
+        stmt = (
+            select(Task)
+            .where(
+                Task.project_id == project_id,
+                Task.org_id == org_id,
+                Task.sprint_id.is_(None),
+            )
+        )
+
+        if status_id is not None:
+            stmt = stmt.where(Task.status_id == status_id)
+        if assignee_id is not None:
+            stmt = stmt.where(Task.assignee_id == assignee_id)
+        if priority is not None:
+            stmt = stmt.where(Task.priority == TaskPriority(priority))
+        if type is not None:
+            stmt = stmt.where(Task.type == TaskType(type))
+        if search is not None:
+            stmt = stmt.where(Task.title.ilike(f"%{search}%"))
+
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = (await self.db.execute(count_stmt)).scalar_one()
+
+        stmt = stmt.order_by(Task.position, Task.created_at).offset(skip).limit(limit)
+        result = await self.db.execute(stmt)
+        tasks = list(result.scalars().all())
+
+        task_ids = [t.id for t in tasks]
+        labels_by_task = await self._load_labels_for_tasks(task_ids)
+
+        items = [
+            TaskListItem(
+                id=t.id,
+                org_id=t.org_id,
+                project_id=t.project_id,
+                number=t.number,
+                title=t.title,
+                status_id=t.status_id,
+                assignee_id=t.assignee_id,
+                reporter_id=t.reporter_id,
+                priority=t.priority.value,
+                type=t.type.value,
+                parent_task_id=t.parent_task_id,
+                sprint_id=t.sprint_id,
+                position=t.position,
+                due_date=t.due_date,
+                created_at=t.created_at,
+                updated_at=t.updated_at,
+                labels=labels_by_task.get(t.id, []),
+            )
+            for t in tasks
+        ]
+
+        return BacklogListResponse(tasks=items, total=total, skip=skip, limit=limit)
 
     # -----------------------------------------------------------------------
     # Create Task
@@ -657,14 +736,27 @@ class TaskService:
     # -----------------------------------------------------------------------
 
     async def list_comments(
-        self, task_id: UUID, org_id: UUID
+        self,
+        task_id: UUID,
+        org_id: UUID,
+        skip: int = 0,
+        limit: int = 50,
     ) -> CommentListResponse:
         await self._get_task(task_id, org_id)
+
+        total_result = await self.db.execute(
+            select(func.count()).select_from(Comment).where(
+                Comment.task_id == task_id
+            )
+        )
+        total = total_result.scalar_one()
 
         result = await self.db.execute(
             select(Comment)
             .where(Comment.task_id == task_id)
             .order_by(Comment.created_at)
+            .offset(skip)
+            .limit(limit)
         )
         comments = list(result.scalars().all())
 
@@ -696,7 +788,7 @@ class TaskService:
             for c in comments
         ]
 
-        return CommentListResponse(comments=items, total=len(items))
+        return CommentListResponse(comments=items, total=total, skip=skip, limit=limit)
 
     async def create_comment(
         self,
@@ -814,14 +906,28 @@ class TaskService:
     # -----------------------------------------------------------------------
 
     async def list_activity(
-        self, task_id: UUID, org_id: UUID
+        self,
+        task_id: UUID,
+        org_id: UUID,
+        skip: int = 0,
+        limit: int = 50,
     ) -> ActivityListResponse:
         await self._get_task(task_id, org_id)
+
+        total_result = await self.db.execute(
+            select(func.count()).select_from(ActivityLog).where(
+                ActivityLog.task_id == task_id,
+                ActivityLog.org_id == org_id,
+            )
+        )
+        total = total_result.scalar_one()
 
         result = await self.db.execute(
             select(ActivityLog)
             .where(ActivityLog.task_id == task_id, ActivityLog.org_id == org_id)
             .order_by(ActivityLog.created_at.desc())
+            .offset(skip)
+            .limit(limit)
         )
         logs = list(result.scalars().all())
 
@@ -856,7 +962,7 @@ class TaskService:
             for log in logs
         ]
 
-        return ActivityListResponse(activities=items, total=len(items))
+        return ActivityListResponse(activities=items, total=total, skip=skip, limit=limit)
 
     # -----------------------------------------------------------------------
     # Internal helpers
