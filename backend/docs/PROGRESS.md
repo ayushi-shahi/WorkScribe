@@ -563,3 +563,125 @@ Replaced the `PATCH /tasks/{id}` workaround with proper dedicated endpoints.
 | User: test@example.com   | `5343fc4f-1621-408d-9b5a-758b43236cdf` |
 | User: member@example.com | `b84c9a6b-d13a-48b4-920f-3c2c44870d7b` |
 | User: brandnew@gmail.com | `d8c52138-34ff-406d-b45d-9b6742286413` |
+
+
+
+## Frontend Progress
+
+**Last Updated:** 2026-03-06
+
+**Frontend location:** `/frontend`
+
+**Dev server:** `http://localhost:5173`
+
+**Backend API:** `http://localhost:8001/api/v1`
+
+### Frontend Status
+
+| Phase | Task                                         | Status  |
+| ----- | -------------------------------------------- | ------- |
+| A1    | Vite + React 19 + TypeScript setup           | ✅ Done |
+| A2    | CSS design tokens (tokens.css + globals.css) | ✅ Done |
+| A3    | Axios client (src/api/client.ts)             | ✅ Done |
+| A4    | Auth Zustand store (src/stores/authStore.ts) | ✅ Done |
+| A5    | React Router shell — all routes stubbed     | ✅ Done |
+| A6    | ProtectedRoute + redirect logic              | ✅ Done |
+| B1    | /login page                                  | ✅ Done |
+| B2    | /register page                               | ✅ Done |
+| B3    | /forgot-password + /reset-password           | ✅ Done |
+| B4    | Token refresh interceptor (full)             | ✅ Done |
+| B5    | Org creation wizard                          | ✅ Done |
+| B6    | Invitation accept page                       | ⬜ Next |
+| C1    | OrgLayout — topbar + sidebar + main         | ⬜      |
+| C2    | Sidebar                                      | ⬜      |
+| C3    | Topbar                                       | ⬜      |
+
+### Key Frontend Files Created
+
+frontend/
+
+├── src/
+
+│   ├── api/
+
+│   │   ├── client.ts              ✅ Axios + silent refresh interceptor
+
+│   │   └── endpoints/
+
+│   │       ├── auth.ts            ✅ login, register, logout, refresh, forgot, reset
+
+│   │       └── organizations.ts   ✅ createOrg, getOrg, checkSlug, inviteMember
+
+│   ├── stores/
+
+│   │   └── authStore.ts           ✅ Zustand: accessToken, user, setAuth, clearAuth
+
+│   ├── styles/
+
+│   │   ├── tokens.css             ✅ Full dark theme design tokens
+
+│   │   ├── globals.css            ✅ Reset + base styles
+
+│   │   ├── auth.css               ✅ Shared auth page styles
+
+│   │   └── wizard.css             ✅ Org creation wizard styles
+
+│   ├── types/
+
+│   │   └── index.ts               ✅ All TypeScript interfaces
+
+│   ├── pages/
+
+│   │   ├── LoginPage.tsx          ✅
+
+│   │   ├── RegisterPage.tsx       ✅
+
+│   │   ├── ForgotPasswordPage.tsx ✅
+
+│   │   ├── ResetPasswordPage.tsx  ✅
+
+│   │   ├── OrgCreatePage.tsx      ✅
+
+│   │   ├── AcceptInvitePage.tsx   ⬜ stub
+
+│   │   ├── DashboardPage.tsx      ⬜ stub
+
+│   │   ├── BoardPage.tsx          ⬜ stub
+
+│   │   ├── BacklogPage.tsx        ⬜ stub
+
+│   │   ├── WikiHomePage.tsx       ⬜ stub
+
+│   │   ├── PageEditorPage.tsx     ⬜ stub
+
+│   │   ├── OrgSettingsPage.tsx    ⬜ stub
+
+│   │   ├── MembersPage.tsx        ⬜ stub
+
+│   │   └── NotFoundPage.tsx       ✅
+
+│   ├── layouts/
+
+│   │   └── OrgLayout.tsx          ⬜ stub
+
+│   └── components/
+
+│       └── ProtectedRoute.tsx     ✅
+
+└── App.tsx                        ✅ Full router + QueryClient + Toaster
+
+### Key Decisions Made
+
+* Dark theme only — CSS variables from tokens.css, no Tailwind
+* Refresh token stored in sessionStorage (not localStorage)
+* Token refresh: silent via Axios interceptor, concurrent 401s queued
+* setTokenGetter pattern dropped — useAuthStore imported directly in client.ts
+* noUncheckedIndexedAccess + exactOptionalPropertyTypes removed from tsconfig (too aggressive with third-party types)
+* Slug availability check hits GET /organizations/{slug} — 404 = available
+
+### Test Credentials (local dev)
+
+| Email               | Password    | Notes              |
+| ------------------- | ----------- | ------------------ |
+| [test@example.com]()   | password123 | Owner of test-org  |
+| [member@example.com]() | password123 | Member of test-org |
