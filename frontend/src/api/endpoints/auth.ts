@@ -22,6 +22,19 @@ export interface RefreshResponse {
   access_token: string
 }
 
+export interface AcceptInviteRequest {
+  display_name?: string
+  password?: string
+}
+
+export interface InviteDetails {
+  org_name: string
+  org_slug: string
+  role: string
+  email: string
+  inviter_name: string
+}
+
 export async function loginApi(data: LoginRequest): Promise<TokenResponse> {
   const res = await apiClient.post<TokenResponse>('/auth/login', data)
   return res.data
@@ -53,5 +66,21 @@ export async function resetPasswordApi(token: string, password: string): Promise
 
 export async function getMeApi(): Promise<AuthUser> {
   const res = await apiClient.get<AuthUser>('/auth/me')
+  return res.data
+}
+
+export async function getInviteDetailsApi(token: string): Promise<InviteDetails> {
+  const res = await apiClient.get<InviteDetails>(`/auth/invitations/${token}`)
+  return res.data
+}
+
+export async function acceptInviteApi(
+  token: string,
+  data: AcceptInviteRequest
+): Promise<TokenResponse> {
+  const res = await apiClient.post<TokenResponse>(
+    `/auth/invitations/${token}/accept`,
+    data
+  )
   return res.data
 }

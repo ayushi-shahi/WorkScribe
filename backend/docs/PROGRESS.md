@@ -564,114 +564,157 @@ Replaced the `PATCH /tasks/{id}` workaround with proper dedicated endpoints.
 | User: member@example.com | `b84c9a6b-d13a-48b4-920f-3c2c44870d7b` |
 | User: brandnew@gmail.com | `d8c52138-34ff-406d-b45d-9b6742286413` |
 
+# Frontend Progress
 
-
-## Frontend Progress
-
-**Last Updated:** 2026-03-06
-
+**Last Updated:** 2026-03-07
+**Backend:** 100% complete
 **Frontend location:** `/frontend`
-
 **Dev server:** `http://localhost:5173`
-
 **Backend API:** `http://localhost:8001/api/v1`
 
-### Frontend Status
+---
 
-| Phase | Task                                         | Status  |
-| ----- | -------------------------------------------- | ------- |
-| A1    | Vite + React 19 + TypeScript setup           | ✅ Done |
-| A2    | CSS design tokens (tokens.css + globals.css) | ✅ Done |
-| A3    | Axios client (src/api/client.ts)             | ✅ Done |
-| A4    | Auth Zustand store (src/stores/authStore.ts) | ✅ Done |
-| A5    | React Router shell — all routes stubbed     | ✅ Done |
-| A6    | ProtectedRoute + redirect logic              | ✅ Done |
-| B1    | /login page                                  | ✅ Done |
-| B2    | /register page                               | ✅ Done |
-| B3    | /forgot-password + /reset-password           | ✅ Done |
-| B4    | Token refresh interceptor (full)             | ✅ Done |
-| B5    | Org creation wizard                          | ✅ Done |
-| B6    | Invitation accept page                       | ⬜ Next |
-| C1    | OrgLayout — topbar + sidebar + main         | ⬜      |
-| C2    | Sidebar                                      | ⬜      |
-| C3    | Topbar                                       | ⬜      |
+## Frontend Status
 
-### Key Frontend Files Created
+| Phase  | Task                                                              | Status  |
+| ------ | ----------------------------------------------------------------- | ------- |
+| A1     | Vite + React 19 + TypeScript setup                                | ✅ Done |
+| A2     | CSS design tokens (tokens.css + globals.css)                      | ✅ Done |
+| A3     | Axios client (src/api/client.ts)                                  | ✅ Done |
+| A4     | Auth Zustand store (src/stores/authStore.ts)                      | ✅ Done |
+| A5     | React Router shell — all routes stubbed                          | ✅ Done |
+| A6     | ProtectedRoute + redirect logic                                   | ✅ Done |
+| B1     | /login page                                                       | ✅ Done |
+| B2     | /register page                                                    | ✅ Done |
+| B3     | /forgot-password + /reset-password                                | ✅ Done |
+| B4     | Token refresh interceptor (full)                                  | ✅ Done |
+| B5     | Org creation wizard                                               | ✅ Done |
+| B6     | Invitation accept page                                            | ✅ Done |
+| C1     | OrgLayout — topbar + sidebar + main                              | ✅ Done |
+| C2     | Sidebar (projects, wiki spaces, nav)                              | ✅ Done |
+| C3     | Topbar (logo, org switcher, search, notif bell, avatar)           | ✅ Done |
+| D1     | BoardPage — fetch tasks grouped by status                        | ✅ Done |
+| D2     | BoardColumn component                                             | ✅ Done |
+| D3     | TaskCard component                                                | ✅ Done |
+| D4     | Drag within column (reorder)                                      | ✅ Done |
+| D5     | Drag between columns (move + optimistic update + rollback)        | ✅ Done |
+| D6     | Board filter toolbar                                              | ⬜ Next |
+| D7     | CreateTaskModal                                                   | ⬜      |
+| D8     | Quick-add inline                                                  | ⬜      |
+| E1     | TaskPanel slide-in shell + URL param sync                         | ✅ Done |
+| E2     | Inline-editable fields (dropdowns for status, priority, assignee) | ⬜ Next |
+| E3     | Tiptap description editor + localStorage autosave                 | ⬜      |
+| E4     | Comments + @mention                                               | ⬜      |
+| E5     | Activity log                                                      | ⬜      |
+| E6     | Linked docs                                                       | ⬜      |
+| E7     | Subtasks                                                          | ⬜      |
+| F1     | BacklogPage                                                       | ⬜ Next |
+| F2     | Task row component                                                | ⬜      |
+| F3     | Drag backlog ↔ sprint                                            | ⬜      |
+| F4     | Create Sprint modal                                               | ⬜      |
+| F5     | Start/Complete Sprint                                             | ⬜      |
+| G1     | WikiLayout                                                        | ⬜      |
+| G2     | PageTree                                                          | ⬜      |
+| G3     | PageEditorPage shell                                              | ⬜      |
+| G4     | Tiptap editor full                                                | ⬜      |
+| G5     | Autosave + Save button                                            | ⬜      |
+| G6     | New Space + New Page                                              | ⬜      |
+| H1     | useWebSocket hook                                                 | ⬜      |
+| H2     | Notification bell + panel                                         | ⬜      |
+| H3     | CommandPalette (Cmd+K)                                            | ⬜      |
+| I1     | DashboardPage                                                     | ⬜      |
+| J1–J5 | Polish + Deploy                                                   | ⬜      |
 
-frontend/
+---
 
-├── src/
+## Key Frontend Files
 
-│   ├── api/
-
-│   │   ├── client.ts              ✅ Axios + silent refresh interceptor
-
-│   │   └── endpoints/
-
-│   │       ├── auth.ts            ✅ login, register, logout, refresh, forgot, reset
-
-│   │       └── organizations.ts   ✅ createOrg, getOrg, checkSlug, inviteMember
-
-│   ├── stores/
-
-│   │   └── authStore.ts           ✅ Zustand: accessToken, user, setAuth, clearAuth
-
-│   ├── styles/
-
-│   │   ├── tokens.css             ✅ Full dark theme design tokens
-
-│   │   ├── globals.css            ✅ Reset + base styles
-
-│   │   ├── auth.css               ✅ Shared auth page styles
-
-│   │   └── wizard.css             ✅ Org creation wizard styles
-
-│   ├── types/
-
-│   │   └── index.ts               ✅ All TypeScript interfaces
-
-│   ├── pages/
-
-│   │   ├── LoginPage.tsx          ✅
-
-│   │   ├── RegisterPage.tsx       ✅
-
-│   │   ├── ForgotPasswordPage.tsx ✅
-
-│   │   ├── ResetPasswordPage.tsx  ✅
-
-│   │   ├── OrgCreatePage.tsx      ✅
-
-│   │   ├── AcceptInvitePage.tsx   ⬜ stub
-
-│   │   ├── DashboardPage.tsx      ⬜ stub
-
-│   │   ├── BoardPage.tsx          ⬜ stub
-
-│   │   ├── BacklogPage.tsx        ⬜ stub
-
-│   │   ├── WikiHomePage.tsx       ⬜ stub
-
-│   │   ├── PageEditorPage.tsx     ⬜ stub
-
-│   │   ├── OrgSettingsPage.tsx    ⬜ stub
-
-│   │   ├── MembersPage.tsx        ⬜ stub
-
-│   │   └── NotFoundPage.tsx       ✅
-
-│   ├── layouts/
-
-│   │   └── OrgLayout.tsx          ⬜ stub
-
-│   └── components/
-
-│       └── ProtectedRoute.tsx     ✅
-
+```
+frontend/src/
+├── api/
+│   ├── client.ts                  ✅ Axios + silent refresh interceptor
+│   └── endpoints/
+│       ├── auth.ts                ✅ login, register, logout, refresh, forgot, reset, invite
+│       ├── organizations.ts       ✅ createOrg, getOrg, checkSlug, inviteMember, getMembers
+│       ├── projects.ts            ✅ getProjects, getProject, createProject, getStatuses
+│       ├── tasks.ts               ✅ getTasksApi, getTaskApi, createTaskApi, updateTaskApi,
+│       │                             deleteTaskApi, moveTaskApi, bulkUpdatePositionsApi,
+│       │                             getSprintsApi, getLabelsApi
+│       ├── comments.ts            ✅ getCommentsApi, createCommentApi, deleteCommentApi
+│       └── wiki.ts                ✅ getWikiSpacesApi, createWikiSpaceApi, getPageTreeApi,
+│                                     getPageApi, createPageApi, updatePageApi, deletePageApi
+├── stores/
+│   ├── authStore.ts               ✅ Zustand: accessToken, user, setAuth, clearAuth
+│   └── uiStore.ts                 ✅ Zustand: task panel, command palette, notifications
+├── hooks/
+│   └── useBoardDnd.ts             ✅ dnd-kit drag/drop hook with optimistic updates
+├── lib/
+│   └── taskHelpers.ts             ✅ groupTasksByStatus, priorityColor, statusColor, getInitials
+├── styles/
+│   ├── tokens.css                 ✅ Full dark theme CSS variables
+│   ├── globals.css                ✅ Reset + base styles
+│   ├── auth.css                   ✅ Shared auth page styles
+│   ├── wizard.css                 ✅ Org creation wizard styles
+│   ├── layout.css                 ✅ App shell, topbar, sidebar, dropdown styles
+│   ├── board.css                  ✅ Board page, columns, task cards, skeleton
+│   └── taskPanel.css              ✅ Slide-over panel styles
+├── types/
+│   └── index.ts                   ✅ All TypeScript interfaces
+├── pages/
+│   ├── LoginPage.tsx              ✅
+│   ├── RegisterPage.tsx           ✅
+│   ├── ForgotPasswordPage.tsx     ✅
+│   ├── ResetPasswordPage.tsx      ✅
+│   ├── OrgCreatePage.tsx          ✅
+│   ├── AcceptInvitePage.tsx       ✅
+│   ├── DashboardPage.tsx          ⬜ stub
+│   ├── BoardPage.tsx              ✅ Full with DnD + sprint filter
+│   ├── BacklogPage.tsx            ⬜ stub
+│   ├── WikiHomePage.tsx           ⬜ stub
+│   ├── PageEditorPage.tsx         ⬜ stub
+│   ├── OrgSettingsPage.tsx        ⬜ stub
+│   ├── MembersPage.tsx            ⬜ stub
+│   └── NotFoundPage.tsx           ✅
+├── layouts/
+│   └── OrgLayout.tsx              ✅ Full layout with TaskPanel mounted
+├── components/
+│   ├── ProtectedRoute.tsx         ✅
+│   ├── layout/
+│   │   ├── Sidebar.tsx            ✅ Projects, wiki spaces, nav items
+│   │   └── Topbar.tsx             ✅ Logo, org switcher, search, bell, avatar dropdown
+│   ├── board/
+│   │   ├── TaskCard.tsx           ✅
+│   │   ├── SortableTaskCard.tsx   ✅
+│   │   └── BoardColumn.tsx        ✅ With useDroppable + SortableContext
+│   └── panel/
+│       └── TaskPanel.tsx          ✅ Slide-over: title edit, status/priority cycle, comments
 └── App.tsx                        ✅ Full router + QueryClient + Toaster
+```
 
-### Key Decisions Made
+---
 
+## Key Decisions
+
+* Dark theme only — CSS variables in `src/styles/tokens.css`, no Tailwind
+* Refresh token stored in `sessionStorage` key `"refresh_token"`
+* Token refresh: silent via Axios interceptor, concurrent 401s queued
+* `sprintId` string (not object) in React Query board cache key
+* `useResolveTaskId` searches all `['board', slug]` query cache entries to map `APP-1` → uuid
+* Task panel reads `?task=APP-1` URL param and resolves to UUID via cache
+* `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` removed from tsconfig (too aggressive)
+* Optimistic updates on board DnD with rollback on error
+
+---
+
+## Test Credentials (local dev)
+
+| Email              | Password    | Role               |
+| ------------------ | ----------- | ------------------ |
+| test@example.com   | password123 | Owner of test-org  |
+| member@example.com | password123 | Member of test-org |
+
+* Org slug: `test-org`
+* Project key: `APP`
 * Dark theme only — CSS variables from tokens.css, no Tailwind
 * Refresh token stored in sessionStorage (not localStorage)
 * Token refresh: silent via Axios interceptor, concurrent 401s queued

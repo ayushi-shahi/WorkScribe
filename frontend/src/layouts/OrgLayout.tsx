@@ -1,49 +1,58 @@
-import { Outlet } from 'react-router-dom'
+import { Outlet, useParams, Navigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
+import { getOrgApi } from '@/api/endpoints/organizations'
+import Sidebar from '@/components/layout/Sidebar'
+import Topbar from '@/components/layout/Topbar'
+import TaskPanel from '@/components/panel/TaskPanel'
+import '@/styles/layout.css'
 
 export default function OrgLayout() {
-  return (
-    <div style={{ display: 'flex', height: '100vh', fontFamily: 'var(--font)' }}>
-      {/* Sidebar — built in C2 */}
+  const { slug } = useParams<{ slug: string }>()
+
+  const {
+    data: org,
+    isLoading,
+    isError,
+  } = useQuery({
+    queryKey: ['org', slug],
+    queryFn: () => getOrgApi(slug ?? ''),
+    enabled: !!slug,
+    staleTime: 5 * 60 * 1000,
+  })
+
+  if (!slug) return <Navigate to="/login" replace />
+
+  if (isLoading) {
+    return (
       <div
         style={{
-          width: 'var(--sidebar-width)',
-          background: 'var(--surface)',
-          borderRight: '1px solid var(--border)',
-          flexShrink: 0,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          height: '100vh',
+          background: 'var(--bg)',
           color: 'var(--text-muted)',
-          fontSize: 12,
+          fontFamily: 'var(--font)',
+          fontSize: 13,
         }}
       >
-        Sidebar (C2)
+        Loading...
       </div>
+    )
+  }
 
-      {/* Main area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        {/* Topbar — built in C3 */}
-        <div
-          style={{
-            height: 'var(--topbar-height)',
-            background: 'var(--surface)',
-            borderBottom: '1px solid var(--border)',
-            display: 'flex',
-            alignItems: 'center',
-            padding: '0 var(--space-4)',
-            color: 'var(--text-muted)',
-            fontSize: 12,
-            flexShrink: 0,
-          }}
-        >
-          Topbar (C3)
-        </div>
+  if (isError || !org) {
+    return <Navigate to="/login" replace />
+  }
 
-        {/* Page content */}
-        <main style={{ flex: 1, overflow: 'auto', background: 'var(--bg)' }}>
-          <Outlet />
-        </main>
-      </div>
+  return (
+    <div className="app-shell">
+      <Topbar org={org} />
+      <Sidebar org={org} />
+      <main className="main-content">
+        <Outlet />
+      </main>
+      <TaskPanel />
     </div>
   )
 }
