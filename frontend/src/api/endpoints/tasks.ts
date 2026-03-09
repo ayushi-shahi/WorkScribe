@@ -1,3 +1,4 @@
+// src/api/endpoints/tasks.ts
 import apiClient from '@/api/client'
 import type { Task, TaskStatus, Label } from '@/types'
 
@@ -63,14 +64,29 @@ export async function getTasksApi(
   params.set('skip', String(skip))
   params.set('limit', String(limit))
   if (filters.assignee_id) params.set('assignee_id', filters.assignee_id)
-  if (filters.priority) params.set('priority', filters.priority)
-  if (filters.label_id) params.set('label_id', filters.label_id)
-  if (filters.type) params.set('type', filters.type)
-  if (filters.sprint_id) params.set('sprint_id', filters.sprint_id)
-  if (filters.search) params.set('search', filters.search)
+  if (filters.priority)    params.set('priority',    filters.priority)
+  if (filters.label_id)    params.set('label_id',    filters.label_id)
+  if (filters.type)        params.set('type',        filters.type)
+  if (filters.sprint_id)   params.set('sprint_id',   filters.sprint_id)
+  if (filters.search)      params.set('search',      filters.search)
 
   const res = await apiClient.get<TaskListResponse>(
     `/organizations/${slug}/projects/${projectId}/tasks?${params.toString()}`
+  )
+  return res.data
+}
+
+export async function getBacklogApi(
+  slug: string,
+  projectId: string,
+  skip = 0,
+  limit = 100
+): Promise<TaskListResponse> {
+  const params = new URLSearchParams()
+  params.set('skip', String(skip))
+  params.set('limit', String(limit))
+  const res = await apiClient.get<TaskListResponse>(
+    `/organizations/${slug}/projects/${projectId}/backlog?${params.toString()}`
   )
   return res.data
 }
