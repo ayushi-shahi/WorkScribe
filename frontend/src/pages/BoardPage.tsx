@@ -193,8 +193,12 @@ export default function BoardPage() {
 
   // ── Filtering ──────────────────────────────────────────────────────────────
 
-  const allTasks: Task[] = taskData?.tasks ?? []
-
+  const rawTasks: Task[] = taskData?.tasks ?? []
+  const allTasks: Task[] = rawTasks.map((t) => ({
+    ...t,
+    task_id: t.task_id || (project ? `${project.key}-${t.number}` : t.task_id),
+  }))
+  
   const filteredTasks = useMemo(() => {
     return allTasks.filter((task) => {
       if (filters.assignees.length > 0) {

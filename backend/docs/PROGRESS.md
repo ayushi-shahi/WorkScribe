@@ -568,15 +568,13 @@ Replaced the `PATCH /tasks/{id}` workaround with proper dedicated endpoints.
 
 # Frontend Progress
 
-**Last Updated:** 2026-03-09
-**Backend:** 100% complete
-**Frontend location:** `/frontend`
-**Dev server:** `http://localhost:5173`
-**Backend API:** `http://localhost:8001/api/v1`
+Last Updated: 2026-03-10
+Backend: 100% complete
+Frontend location: /frontend
+Dev server: [http://localhost:5173](http://localhost:5173)
+Backend API: [http://localhost:8001/api/v1](http://localhost:8001/api/v1)
 
----
-
-## Frontend Status
+### Frontend Status
 
 | Phase  | Task                                                              | Status  |
 | ------ | ----------------------------------------------------------------- | ------- |
@@ -604,17 +602,17 @@ Replaced the `PATCH /tasks/{id}` workaround with proper dedicated endpoints.
 | D7     | CreateTaskModal (full field set, invalidates board on success)    | ✅ Done |
 | D8     | Quick-add inline (per-column inline input, Enter/Escape)          | ✅ Done |
 | E1     | TaskPanel slide-in shell + URL param sync                         | ✅ Done |
-| E2     | Inline-editable fields (dropdowns for status, priority, assignee) | ⬜ Next |
-| E3     | Tiptap description editor + localStorage autosave                 | ⬜      |
-| E4     | Comments + @mention                                               | ⬜      |
-| E5     | Activity log                                                      | ⬜      |
+| E2     | Inline-editable fields (dropdowns for status, priority, assignee) | ✅ Done |
+| E3     | Tiptap description editor + localStorage autosave                 | ✅ Done |
+| E4     | Comments + delete own comment + optimistic add                    | ⬜ Next |
+| E5     | Activity log timeline                                             | ⬜      |
 | E6     | Linked docs                                                       | ⬜      |
 | E7     | Subtasks                                                          | ⬜      |
 | F1     | BacklogPage (sprint sections + backlog section + inline create)   | ✅ Done |
-| F2     | Task row component                                                | ⬜ Next |
-| F3     | Drag backlog ↔ sprint                                            | ⬜      |
-| F4     | Create Sprint modal                                               | ⬜      |
-| F5     | Start/Complete Sprint                                             | ⬜      |
+| F2     | BacklogTaskRow component                                          | ✅ Done |
+| F3     | Drag backlog ↔ sprint                                            | ✅ Done |
+| F4     | Create Sprint modal                                               | ✅ Done |
+| F5     | Start/Complete Sprint modals                                      | ✅ Done |
 | G1     | WikiLayout                                                        | ⬜      |
 | G2     | PageTree                                                          | ⬜      |
 | G3     | PageEditorPage shell                                              | ⬜      |
@@ -629,90 +627,160 @@ Replaced the `PATCH /tasks/{id}` workaround with proper dedicated endpoints.
 
 ---
 
-## Completed Frontend Implementation Notes
+### Completed Frontend Implementation Notes
 
-### D6 — Board Filter Toolbar
+#### D6 — Board Filter Toolbar
 
-* `FilterState` type: `{ assignees: string[], priorities: string[], labels: string[] }`
-* `FilterDropdown` component: pill button, opens positioned menu, closes on outside click
+* FilterState type: { assignees: string[], priorities: string[], labels: string[] }
+* FilterDropdown component: pill button, opens positioned menu, closes on outside click
 * Active count badge + inline X to clear individual filters; "Clear all" button
 * Filtering applied client-side against fetched tasks (no re-query)
-* `getOrgMembersApi` returns `{ members: OrgMember[], total }` — unwrapped with Array.isArray guard
-* `EMPTY_FILTERS` constant for reset; "X of N tasks" summary when filters active
+* getOrgMembersApi returns { members: OrgMember[], total } — unwrapped with Array.isArray guard
+* EMPTY_FILTERS constant for reset; "X of N tasks" summary when filters active
 
-### D7 — CreateTaskModal
+#### D7 — CreateTaskModal
 
-* Props: `{ projectId, defaultStatusId?, onClose, onCreated? }`
+* Props: { projectId, defaultStatusId?, onClose, onCreated? }
 * Fields: title, status, priority, type, assignee, sprint, labels (multi-select)
-* `InlineSelect` sub-component with `keepOpenOnSelect` prop for labels
-* Local `categoryColor()` function — `statusColor` from taskHelpers not used here
-* `PriorityValue` / `TypeValue` explicit union types (not `as const` — causes setState mismatch)
-* On success: `queryClient.invalidateQueries({ queryKey: ['board', slug] })` prefix invalidation
-* `.ctm-modal { overflow: visible }` — required to prevent dropdown clipping
+* InlineSelect sub-component with keepOpenOnSelect prop for labels
+* Local categoryColor() function — statusColor from taskHelpers not used here
+* PriorityValue / TypeValue explicit union types (not as const — causes setState mismatch)
+* On success: queryClient.invalidateQueries({ queryKey: ['board', slug] }) prefix invalidation
+* .ctm-modal { overflow: visible } — required to prevent dropdown clipping
 * Escape key + overlay click close modal
 
-### D8 — Quick-add Inline
+#### D8 — Quick-add Inline
 
-* Self-contained `QuickAddInput` component inside `BoardColumn.tsx`
-* Reads `projectId` from board query cache via `queryClient.getQueryData(['projects', slug])`
+* Self-contained QuickAddInput component inside BoardColumn.tsx
+* Reads projectId from board query cache via queryClient.getQueryData(['projects', slug])
 * Enter creates task, Escape/×-button cancels; "Add" button disabled when title empty
-* Invalidates `['board', slug]` prefix on success
-* Each column manages its own `showQuickAdd` state independently
+* Invalidates ['board', slug] prefix on success
+* Each column manages its own showQuickAdd state independently
 
-### E1 — TaskPanel
+#### E1 — TaskPanel
 
-* Slide-over triggered by `?task=APP-1` URL param
-* `useResolveTaskId` hook searches all `['board', slug]` cache entries to map `APP-1` → UUID
-* Closing panel removes `?task=` param without pushing to history
+* Slide-over triggered by ?task=APP-1 URL param
+* useResolveTaskId hook searches all ['board', slug] cache entries to map APP-1 → UUID
+* Closing panel removes ?task= param without pushing to history
 
-### F1 — BacklogPage
+#### E2 — Inline-editable Fields (Dropdowns)
+
+* Replaced click-to-cycle status/priority with proper dropdowns
+* StatusDropdown: colored dot + name, all project statuses, current item has checkmark
+* PriorityDropdown: colored dot + name, all 5 options (urgent/high/medium/low/none)
+* AssigneeDropdown: searchable member picker, lazy-fetches members only when opened, supports unassign (assignee_id: null)
+* All three use useClickOutside hook, close on Escape
+* Mutations: statusMutation, priorityMutation, assigneeMutation — each invalidates ['board'] and ['backlog', slug]
+* New CSS in taskPanel.css: .tp-dropdown-wrap, .tp-field-btn, .tp-dropdown, .tp-dropdown-item, etc.
+
+#### E3 — Tiptap Description Editor
+
+* npm install @tiptap/react @tiptap/starter-kit @tiptap/extension-placeholder
+* useEditor with StarterKit + Placeholder extension
+* Toolbar: Bold, Italic, Bullet list, Numbered list — each toggles active state
+* Draft autosaved to localStorage key task-desc-draft:{resolvedId} on every keystroke
+* Debounced API save (1500ms) via updateTaskApi with description_json
+* On successful API save: localStorage draft cleared
+* On task load: prefers localStorage draft over server content (handles panel close/reopen mid-edit)
+* Save status indicator: "Saving…" → "Saved" shown in toolbar
+* Editor content in .tp-editor-wrap, placeholder via .is-editor-empty:first-child::before
+
+#### F1 — BacklogPage
 
 * Three collapsible sections: Active Sprints → Planned Sprints → Backlog (no sprint)
-* `SprintSection`: shows Active/Planned badge, date range, progress bar (active only), task count
-* `BacklogSection`: always shown at bottom; tasks with `sprint_id IS NULL` via `getBacklogApi`
-* `TaskRow`: priority dot, task_id (mono), title, status chip, assignee avatar; done tasks have strikethrough
-* `task.status?.category` optional chain — API does not always embed full status object
-* Inline create row at bottom of each section; sprint tasks pass `sprint_id` to `createTaskApi`
-* Clicking task row navigates to `board?task=APP-X` to open TaskPanel
-* Board/Backlog tab switcher in page header using `NavLink`
-* Added `getBacklogApi` to `src/api/endpoints/tasks.ts`
-* Query keys: `['backlog', slug, projectId]` for all tasks, `['backlog-tasks', slug, projectId]` for pure backlog
+* SprintSection: shows Active/Planned badge, date range, progress bar (active only), task count
+* BacklogSection: always shown at bottom; tasks with sprint_id IS NULL via getBacklogApi
+* TaskRow: priority dot, task_id (mono), title, status chip, assignee avatar; done tasks have strikethrough
+* task.status?.category optional chain — API does not always embed full status object
+* Inline create row at bottom of each section; sprint tasks pass sprint_id to createTaskApi
+* Clicking task row navigates to board?task=APP-X to open TaskPanel
+* Board/Backlog tab switcher in page header using NavLink
+* Added getBacklogApi to src/api/endpoints/tasks.ts
+* Query keys: ['backlog', slug, projectId] for all tasks, ['backlog-tasks', slug, projectId] for pure backlog
+
+#### F2 — BacklogTaskRow Component
+
+* Extracted to src/components/backlog/BacklogTaskRow.tsx
+* Props: { task, sprint?, onClick }
+* Renders: priority dot, task ID (mono), title, sprint badge (.bl-sprint-badge--row), status chip, assignee avatar
+* Done tasks (status.category === 'done') get strikethrough on ID + title
+* Reused across SprintSection and BacklogSection
+
+#### F3 — Drag Backlog ↔ Sprint
+
+* dnd-kit DndContext wraps entire BacklogPage, PointerSensor with distance: 8
+* Each section body is DroppableSectionBody (useDroppable + SortableContext combined)
+* Each row wrapped in SortableBacklogRow (useSortable, opacity 0.4 while dragging)
+* Section IDs: sprint:{sprintId} or backlog
+* Cross-section drag: calls addTaskToSprintApi (POST /sprints/{id}/tasks) or removeTaskFromSprintApi (DELETE /sprints/{id}/tasks/{taskId}) with optimistic update + rollback on error
+* Same-section drag: calls bulkUpdatePositionsApi, optimistic reorder
+* DragOverlay ghost card with slight rotation
+* Both api functions added to src/api/endpoints/tasks.ts
+* Drag-over highlight: .bl-section-body--over (dashed brand border)
+
+#### F4 — Create Sprint Modal
+
+* src/components/backlog/CreateSprintModal.tsx
+* Fields: name (required), start date (optional), end date (optional)
+* Validation: name required, end date must be after start date
+* API: createSprintApi → POST /organizations/{slug}/projects/{id}/sprints
+* On success: invalidates ['sprints', slug, projectId], toast, closes modal
+* "New Sprint" button added to BacklogPage header (.bl-header-actions slot)
+* Escape + overlay click close; focus traps to name input on mount
+* New interfaces: CreateSprintRequest, SprintResponse added to tasks.ts
+
+#### F5 — Start/Complete Sprint Modals
+
+* src/components/backlog/StartSprintModal.tsx — shows sprint info + task count, confirms start
+* src/components/backlog/CompleteSprintModal.tsx — shows incomplete task count, radio options: move to backlog or to a specific planned sprint
+* SprintSection updated with plannedSprints prop; Start/Complete buttons in section header (e.stopPropagation() to prevent collapse)
+* startSprintApi → POST /sprints/{id}/start; completeSprintApi → POST /sprints/{id}/complete with body { move_incomplete_to?: string }
+* On success: invalidates ['sprints', slug], ['backlog', slug], ['backlog-tasks', slug], ['board', slug]
+* Backend returns 409 if another sprint already active — shown as error toast
+* Completed sprint disappears from list (filtered to status !== 'completed')
+
+#### Board Task Panel Fix
+
+* Root cause: getTasksApi list responses don't include task_id; useResolveTaskId searched board cache by t.task_id — always missed
+* Fix 1 (BoardPage.tsx): raw tasks mapped to add task_id: t.task_id || `${project.key}-${t.number}` at render time
+* Fix 2 (useResolveTaskId): searches board cache by task_id string, falls back to number parsed from param (APP-2 → 2), then searches backlog cache (['backlog-tasks', slug]), then falls back to UUID passthrough
+* Uses useMemo; hooks kept before all conditional returns
 
 ---
 
-## Key Frontend Files
+### Key Frontend Files
 
 ```
 frontend/src/
 ├── api/
 │   ├── client.ts                  ✅ Axios + silent refresh interceptor
 │   └── endpoints/
-│       ├── auth.ts                ✅ login, register, logout, refresh, forgot, reset, invite
-│       ├── organizations.ts       ✅ createOrg, getOrg, checkSlug, inviteMember, getMembers
+│       ├── auth.ts                ✅
+│       ├── organizations.ts       ✅ getOrgMembersApi returns { members, total }
 │       ├── projects.ts            ✅ getProjects, getProject, createProject, getStatuses
 │       ├── tasks.ts               ✅ getTasksApi, getBacklogApi, getTaskApi, createTaskApi,
 │       │                             updateTaskApi, deleteTaskApi, moveTaskApi,
-│       │                             bulkUpdatePositionsApi, getSprintsApi, getLabelsApi
+│       │                             bulkUpdatePositionsApi, getSprintsApi, getLabelsApi,
+│       │                             addTaskToSprintApi, removeTaskFromSprintApi,
+│       │                             createSprintApi, startSprintApi, completeSprintApi
 │       ├── comments.ts            ✅ getCommentsApi, createCommentApi, deleteCommentApi
-│       └── wiki.ts                ✅ getWikiSpacesApi, createWikiSpaceApi, getPageTreeApi,
-│                                     getPageApi, createPageApi, updatePageApi, deletePageApi
+│       └── wiki.ts                ✅
 ├── stores/
-│   ├── authStore.ts               ✅ Zustand: accessToken, user, setAuth, clearAuth
-│   └── uiStore.ts                 ✅ Zustand: task panel, command palette, notifications
+│   ├── authStore.ts               ✅
+│   └── uiStore.ts                 ✅
 ├── hooks/
-│   └── useBoardDnd.ts             ✅ dnd-kit drag/drop hook with optimistic updates
+│   └── useBoardDnd.ts             ✅
 ├── lib/
 │   └── taskHelpers.ts             ✅ groupTasksByStatus, priorityColor, statusColor, getInitials
 ├── styles/
-│   ├── tokens.css                 ✅ Full dark theme CSS variables
-│   ├── globals.css                ✅ Reset + base styles
-│   ├── auth.css                   ✅ Shared auth page styles
-│   ├── wizard.css                 ✅ Org creation wizard styles
-│   ├── layout.css                 ✅ App shell, topbar, sidebar, dropdown styles
-│   ├── board.css                  ✅ Board page, columns, task cards, filter toolbar,
-│   │                                 CreateTaskModal, quick-add inline, skeleton
-│   ├── taskPanel.css              ✅ Slide-over panel styles
-│   └── backlog.css                ✅ Backlog page, sprint sections, task rows, inline create
+│   ├── tokens.css                 ✅
+│   ├── globals.css                ✅
+│   ├── auth.css                   ✅
+│   ├── wizard.css                 ✅
+│   ├── layout.css                 ✅
+│   ├── board.css                  ✅
+│   ├── taskPanel.css              ✅ + E2 dropdown styles + E3 Tiptap editor styles
+│   └── backlog.css                ✅ + F3 dnd styles + F4 modal styles + F5 sprint action styles
 ├── types/
 │   └── index.ts                   ✅ All TypeScript interfaces
 ├── pages/
@@ -723,8 +791,8 @@ frontend/src/
 │   ├── OrgCreatePage.tsx          ✅
 │   ├── AcceptInvitePage.tsx       ✅
 │   ├── DashboardPage.tsx          ⬜ stub
-│   ├── BoardPage.tsx              ✅ DnD + sprint filter + filter toolbar + CreateTaskModal
-│   ├── BacklogPage.tsx            ✅ Sprint sections + backlog + inline create
+│   ├── BoardPage.tsx              ✅ DnD + sprint filter + filter toolbar + CreateTaskModal + task_id enrichment
+│   ├── BacklogPage.tsx            ✅ dnd-kit + Sprint sections + Create/Start/Complete sprint modals
 │   ├── WikiHomePage.tsx           ⬜ stub
 │   ├── PageEditorPage.tsx         ⬜ stub
 │   ├── OrgSettingsPage.tsx        ⬜ stub
@@ -735,45 +803,58 @@ frontend/src/
 ├── components/
 │   ├── ProtectedRoute.tsx         ✅
 │   ├── layout/
-│   │   ├── Sidebar.tsx            ✅ Projects, wiki spaces, nav items
-│   │   └── Topbar.tsx             ✅ Logo, org switcher, search, bell, avatar dropdown
+│   │   ├── Sidebar.tsx            ✅
+│   │   └── Topbar.tsx             ✅
 │   ├── board/
 │   │   ├── TaskCard.tsx           ✅
 │   │   ├── SortableTaskCard.tsx   ✅
-│   │   ├── BoardColumn.tsx        ✅ useDroppable + SortableContext + QuickAddInput
-│   │   └── CreateTaskModal.tsx    ✅ Full create form with InlineSelect
+│   │   ├── BoardColumn.tsx        ✅
+│   │   └── CreateTaskModal.tsx    ✅
+│   ├── backlog/
+│   │   ├── BacklogTaskRow.tsx     ✅ F2 — extracted task row component
+│   │   ├── CreateSprintModal.tsx  ✅ F4
+│   │   ├── StartSprintModal.tsx   ✅ F5
+│   │   └── CompleteSprintModal.tsx ✅ F5
 │   └── panel/
-│       └── TaskPanel.tsx          ✅ Slide-over: title edit, status/priority cycle, comments
-└── App.tsx                        ✅ Full router + QueryClient + Toaster
+│       └── TaskPanel.tsx          ✅ E2 dropdowns + E3 Tiptap editor + useResolveTaskId fix
+└── App.tsx                        ✅
 ```
 
 ---
 
-## Key Decisions
+### Key Decisions
 
-* Dark theme only — CSS variables in `src/styles/tokens.css`, no Tailwind
-* Refresh token stored in `sessionStorage` key `"refresh_token"`
+* Dark theme only — CSS variables in src/styles/tokens.css, no Tailwind
+* Refresh token stored in sessionStorage key "refresh_token"
 * Token refresh: silent via Axios interceptor, concurrent 401s queued
-* `sprintId` string (not object) in React Query board cache key
-* `useResolveTaskId` searches all `['board', slug]` query cache entries to map `APP-1` → UUID
-* Task panel reads `?task=APP-1` URL param and resolves to UUID via cache
-* `noUncheckedIndexedAccess` + `exactOptionalPropertyTypes` removed from tsconfig (too aggressive)
-* Optimistic updates on board DnD with rollback on error
-* `getOrgMembersApi` returns `{ members, total }` object — always unwrap with Array.isArray guard
-* Board query cache prefix `['board', slug]` used for invalidation — catches all sprint variants
-* `task.status` may be undefined on list responses — always use optional chain `task.status?.category`
-* `statusColor` exists in `taskHelpers.ts`; local `categoryColor()` used inside CreateTaskModal
-* `showAllTasks` defaults to `true` on BoardPage so tasks without sprint are always visible
+* sprintId string (not object) in React Query board cache key
+* useResolveTaskId searches board cache by task_id, falls back to number match, then backlog cache, then UUID passthrough
+* Task panel reads ?task=APP-1 URL param and resolves to UUID via cache
+* noUncheckedIndexedAccess + exactOptionalPropertyTypes removed from tsconfig
+* Optimistic updates on board DnD and backlog DnD with rollback on error
+* getOrgMembersApi returns { members, total } — always unwrap with Array.isArray guard
+* Board query cache prefix ['board', slug] used for invalidation
+* task.status may be undefined on list responses — always use optional chain task.status?.category
+* statusColor exists in taskHelpers.ts; local categoryColor() used inside CreateTaskModal
+* showAllTasks defaults to true on BoardPage so tasks without sprint are always visible
 * Backlog page uses two separate queries: all tasks (for sprint grouping) + pure backlog tasks
+* task_id enrichment done at render time in BoardPage, not in query cache
+* Assignee members fetched lazily — only when AssigneeDropdown opens
+* Both backlog caches (['backlog'] and ['backlog-tasks']) invalidated on sprint changes
+* Description autosave: localStorage draft keyed task-desc-draft:{resolvedId}, 1500ms debounce to API, draft cleared on successful save
+* Hooks must never be called after conditional returns (guards kept after all hooks)
+* useMemo used for useResolveTaskId to avoid re-computation on every render
 
----
+### Test Credentials (local dev)
 
-## Test Credentials (local dev)
+| Email                                        | Password    | Role               |
+| -------------------------------------------- | ----------- | ------------------ |
+| [test@example.com](mailto:test@example.com)     | password123 | Owner of test-org  |
+| [member@example.com](mailto:member@example.com) | password123 | Member of test-org |
 
-| Email              | Password    | Role               |
-| ------------------ | ----------- | ------------------ |
-| test@example.com   | password123 | Owner of test-org  |
-| member@example.com | password123 | Member of test-org |
+|  |  |  |
+| - | - | - |
+|  |  |  |
 
 * Org slug: `test-org`
 * Project key: `APP`

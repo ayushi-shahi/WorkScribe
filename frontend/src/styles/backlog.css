@@ -70,7 +70,7 @@
 .bl-content {
   flex: 1;
   overflow-y: auto;
-  padding: var(--space-4) var(--space-6);
+  padding: var(--space-4) var(--space-6) var(--space-6) var(--space-6);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -85,7 +85,6 @@
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  overflow: hidden;
 }
 
 .bl-section--active {
@@ -433,4 +432,484 @@
 @keyframes skeleton-pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.4; }
+}
+
+
+.bl-sprint-badge--row {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font);
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--surface3);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ── F3 additions ─────────────────────────────────────────────────────────────── */
+
+/* Sprint badge inside task rows */
+.bl-sprint-badge--row {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font);
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--surface3);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Section body drag-over highlight */
+.bl-section-body--over {
+  background: var(--brand-light);
+  outline: 2px dashed var(--brand-mid);
+  outline-offset: -2px;
+}
+
+/* DragOverlay ghost card */
+.bl-drag-overlay {
+  background: var(--surface);
+  border: 1px solid var(--brand-mid);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  opacity: 0.95;
+  pointer-events: none;
+  transform: rotate(0.8deg) scale(1.01);
+}
+
+/* Sortable rows: grab cursor on the wrapper */
+.bl-task-row {
+  cursor: grab;
+}
+
+.bl-task-row:active {
+  cursor: grabbing;
+}
+
+/* ── F3 additions ─────────────────────────────────────────────────────────────── */
+
+.bl-sprint-badge--row {
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font);
+  padding: 2px 6px;
+  border-radius: 3px;
+  background: var(--surface3);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bl-section-body--over {
+  background: var(--brand-light);
+  outline: 2px dashed var(--brand-mid);
+  outline-offset: -2px;
+}
+
+.bl-drag-overlay {
+  background: var(--surface);
+  border: 1px solid var(--brand-mid);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  opacity: 0.95;
+  pointer-events: none;
+  transform: rotate(0.8deg) scale(1.01);
+}
+
+.bl-task-row {
+  cursor: grab;
+}
+
+.bl-task-row:active {
+  cursor: grabbing;
+}
+
+/* ── F4 additions ─────────────────────────────────────────────────────────────── */
+
+/* Header actions slot */
+.bl-header-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.bl-new-sprint-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 28px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border2);
+  background: var(--surface2);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast),
+              border-color var(--transition-fast);
+}
+
+.bl-new-sprint-btn:hover {
+  background: var(--surface3);
+  color: var(--text-primary);
+  border-color: var(--brand-mid);
+}
+
+/* ── CreateSprintModal ────────────────────────────────────────────────────────── */
+
+.csm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--z-modal);
+}
+
+.csm-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  width: 420px;
+  display: flex;
+  flex-direction: column;
+  animation: csm-appear 0.15s ease-out;
+}
+
+@keyframes csm-appear {
+  from { opacity: 0; transform: scale(0.97) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.csm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.csm-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font);
+}
+
+.csm-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.csm-close:hover {
+  background: var(--surface2);
+  color: var(--text-primary);
+}
+
+.csm-body {
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.csm-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex: 1;
+}
+
+.csm-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-family: var(--font);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.csm-required {
+  color: var(--red);
+  margin-left: 2px;
+}
+
+.csm-input {
+  height: 34px;
+  padding: 0 var(--space-3);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: var(--font);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.csm-input:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-light);
+}
+
+.csm-input--error {
+  border-color: var(--red);
+}
+
+.csm-input--error:focus {
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.15);
+}
+
+/* Date inputs — override browser chrome */
+.csm-input--date {
+  color-scheme: dark;
+  cursor: pointer;
+}
+
+.csm-error-msg {
+  font-size: 11px;
+  color: var(--red);
+  font-family: var(--font);
+}
+
+.csm-date-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.csm-date-sep {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding-bottom: 8px;
+  flex-shrink: 0;
+}
+
+.csm-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+.csm-btn {
+  height: 32px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  border: none;
+}
+
+.csm-btn--secondary {
+  background: var(--surface2);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.csm-btn--secondary:hover:not(:disabled) {
+  background: var(--surface3);
+  color: var(--text-primary);
+}
+
+.csm-btn--primary {
+  background: var(--brand);
+  color: #fff;
+}
+
+.csm-btn--primary:hover:not(:disabled) {
+  background: var(--brand-hover);
+}
+
+.csm-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── F5 additions ─────────────────────────────────────────────────────────────── */
+
+/* Section header actions slot */
+.bl-section-actions {
+  margin-left: var(--space-3);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+/* Start / Complete sprint buttons in section header */
+.bl-sprint-action-btn {
+  height: 24px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background var(--transition-fast), color var(--transition-fast),
+              border-color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.bl-sprint-action-btn--start {
+  background: var(--brand-light);
+  color: var(--brand);
+  border-color: var(--brand-mid);
+}
+
+.bl-sprint-action-btn--start:hover {
+  background: var(--brand);
+  color: #fff;
+}
+
+.bl-sprint-action-btn--complete {
+  background: transparent;
+  color: var(--text-muted);
+  border-color: var(--border2);
+}
+
+.bl-sprint-action-btn--complete:hover {
+  background: var(--surface3);
+  color: var(--text-primary);
+  border-color: var(--border2);
+}
+
+/* StartSprintModal extras */
+.ssm-sprint-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.ssm-sprint-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font);
+}
+
+.ssm-sprint-dates {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font);
+}
+
+.ssm-description {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-family: var(--font);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.ssm-warning {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface2);
+  border-left: 3px solid var(--border2);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  line-height: 1.5;
+}
+
+/* CompleteSprintModal extras */
+.com-move-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.com-option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.com-option:hover {
+  background: var(--surface2);
+  border-color: var(--border2);
+}
+
+.com-option input[type='radio'] {
+  accent-color: var(--brand);
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.com-option-label {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-family: var(--font);
+}
+
+/* Start button variant for csm-btn */
+.csm-btn--start {
+  background: var(--brand);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.csm-btn--start:hover:not(:disabled) {
+  background: var(--brand-hover);
+}
+
+/* Complete button variant */
+.csm-btn--complete {
+  background: var(--green);
+  color: #0F1117;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.csm-btn--complete:hover:not(:disabled) {
+  background: #22c55e;
 }

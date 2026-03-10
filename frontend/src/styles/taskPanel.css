@@ -12,7 +12,7 @@
   to   { opacity: 1; }
 }
 
-/* ── Panel ────────────────────────────────────────────────────────────────────── */
+/* ── Panel ──────────────────────────────────────────────────────────────────────── */
 .task-panel {
   position: fixed;
   top: 0;
@@ -33,7 +33,7 @@
   to   { transform: translateX(0); }
 }
 
-/* ── Panel topbar ─────────────────────────────────────────────────────────────── */
+/* ── Panel topbar ──────────────────────────────────────────────────────────────── */
 .task-panel-topbar {
   display: flex;
   align-items: center;
@@ -75,7 +75,7 @@
   color: var(--text-primary);
 }
 
-/* ── Panel body ───────────────────────────────────────────────────────────────── */
+/* ── Panel body ──────────────────────────────────────────────────────────────────── */
 .task-panel-body {
   flex: 1;
   overflow-y: auto;
@@ -89,7 +89,7 @@
   width: 4px;
 }
 
-/* ── Title ────────────────────────────────────────────────────────────────────── */
+/* ── Title ──────────────────────────────────────────────────────────────────────── */
 .task-panel-title {
   font-size: 18px;
   font-weight: 700;
@@ -116,7 +116,7 @@
   box-shadow: 0 0 0 2px var(--brand-mid);
 }
 
-/* ── Meta grid ────────────────────────────────────────────────────────────────── */
+/* ── Meta grid ──────────────────────────────────────────────────────────────────── */
 .task-panel-meta {
   display: grid;
   grid-template-columns: 120px 1fr;
@@ -163,7 +163,7 @@
   border-color: var(--border);
 }
 
-/* ── Priority badge ───────────────────────────────────────────────────────────── */
+/* ── Priority badge (kept for backward compat) ────────────────────────────────── */
 .priority-badge {
   display: flex;
   align-items: center;
@@ -174,6 +174,8 @@
   font-size: 11px;
   font-weight: 600;
   font-family: var(--font);
+  border: none;
+  cursor: pointer;
 }
 
 .priority-badge.urgent { background: rgba(239,68,68,0.15);  color: #ef4444; }
@@ -182,7 +184,7 @@
 .priority-badge.low    { background: rgba(99,102,241,0.15); color: #6366f1; }
 .priority-badge.none   { background: var(--surface2);       color: var(--text-muted); }
 
-/* ── Status select ────────────────────────────────────────────────────────────── */
+/* ── Status chip (kept for backward compat) ───────────────────────────────────── */
 .status-chip {
   display: flex;
   align-items: center;
@@ -211,7 +213,7 @@
   margin: 0 calc(-1 * var(--space-6));
 }
 
-/* ── Description section ──────────────────────────────────────────────────────── */
+/* ── Section label ────────────────────────────────────────────────────────────── */
 .task-panel-section-label {
   font-size: 11px;
   font-weight: 600;
@@ -222,6 +224,7 @@
   margin-bottom: var(--space-2);
 }
 
+/* ── Description placeholder (legacy, now replaced by editor) ─────────────────── */
 .task-desc-placeholder {
   font-size: 13px;
   color: var(--text-muted);
@@ -237,7 +240,7 @@
   background: var(--surface2);
 }
 
-/* ── Comments section ─────────────────────────────────────────────────────────── */
+/* ── Comments ─────────────────────────────────────────────────────────────────── */
 .task-comment {
   display: flex;
   gap: var(--space-3);
@@ -323,6 +326,9 @@
   flex-shrink: 0;
   margin-top: 3px;
   transition: opacity var(--transition-fast);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .task-comment-submit:disabled {
@@ -330,10 +336,350 @@
   cursor: not-allowed;
 }
 
-/* ── Loading skeleton ─────────────────────────────────────────────────────────── */
+/* ── Skeleton ─────────────────────────────────────────────────────────────────── */
 .task-panel-skeleton {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
   padding: var(--space-5) var(--space-6);
+}
+
+.skeleton {
+  background: var(--surface3);
+  border-radius: var(--radius-sm);
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* ── E2: Inline dropdown fields ───────────────────────────────────────────────── */
+
+.tp-dropdown-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.tp-field-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: none;
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+  white-space: nowrap;
+  max-width: 200px;
+}
+
+.tp-field-btn:hover {
+  background: var(--surface2);
+  border-color: var(--border);
+}
+
+.tp-field-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.tp-field-btn-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tp-field-btn-text--muted {
+  color: var(--text-muted);
+}
+
+.tp-chevron {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+
+.tp-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tp-priority-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.tp-priority-btn--urgent { color: #ef4444; }
+.tp-priority-btn--high   { color: #f97316; }
+.tp-priority-btn--medium { color: #eab308; }
+.tp-priority-btn--low    { color: #6366f1; }
+.tp-priority-btn--none   { color: var(--text-muted); }
+
+.tp-assignee-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: #fff;
+  font-size: 8px;
+  font-weight: 700;
+  font-family: var(--font);
+  flex-shrink: 0;
+}
+
+.tp-assignee-avatar--empty {
+  background: var(--surface3);
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.tp-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 180px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-md);
+  z-index: var(--z-dropdown);
+  overflow: hidden;
+  animation: tp-dropdown-appear 0.1s ease-out;
+}
+
+@keyframes tp-dropdown-appear {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.tp-dropdown--assignee {
+  min-width: 220px;
+}
+
+.tp-dropdown-list {
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.tp-dropdown-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.tp-dropdown-search-wrap {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.tp-dropdown-search {
+  width: 100%;
+  height: 28px;
+  padding: 0 var(--space-2);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-family: var(--font);
+  color: var(--text-primary);
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color var(--transition-fast);
+}
+
+.tp-dropdown-search:focus {
+  border-color: var(--brand);
+}
+
+.tp-dropdown-search::placeholder {
+  color: var(--text-muted);
+}
+
+.tp-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  height: 32px;
+  padding: 0 var(--space-3);
+  background: none;
+  border: none;
+  font-size: 12px;
+  font-family: var(--font);
+  color: var(--text-secondary);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.tp-dropdown-item:hover {
+  background: var(--surface3);
+  color: var(--text-primary);
+}
+
+.tp-dropdown-item--active {
+  color: var(--text-primary);
+}
+
+.tp-dropdown-item-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tp-check {
+  color: var(--brand);
+  flex-shrink: 0;
+}
+
+.tp-assignee-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  gap: 1px;
+}
+
+.tp-assignee-email {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tp-dropdown--assignee .tp-dropdown-item {
+  height: auto;
+  min-height: 36px;
+  padding: var(--space-2) var(--space-3);
+  align-items: center;
+}
+
+.tp-dropdown-empty {
+  padding: var(--space-3) var(--space-3);
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-style: italic;
+}
+
+/* ── E3: Tiptap description editor ────────────────────────────────────────────── */
+
+.tp-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+  min-height: 22px;
+}
+
+.tp-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tp-toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-sm);
+  border: none;
+  background: none;
+  font-size: 11px;
+  font-family: var(--font);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.tp-toolbar-btn:hover {
+  background: var(--surface2);
+  color: var(--text-primary);
+}
+
+.tp-toolbar-btn.active {
+  background: var(--surface3);
+  color: var(--brand);
+}
+
+.tp-editor-save-status {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font);
+  margin-left: var(--space-2);
+  min-width: 40px;
+}
+
+.tp-editor-wrap {
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+  cursor: text;
+}
+
+.tp-editor-wrap:hover {
+  background: var(--surface2);
+}
+
+.tp-editor-content {
+  min-height: 80px;
+  padding: var(--space-2);
+  font-size: 13px;
+  font-family: var(--font);
+  color: var(--text-secondary);
+  line-height: 1.6;
+  outline: none;
+}
+
+.tp-editor-content p {
+  margin: 0 0 var(--space-2) 0;
+}
+
+.tp-editor-content p:last-child {
+  margin-bottom: 0;
+}
+
+.tp-editor-content ul,
+.tp-editor-content ol {
+  padding-left: var(--space-5);
+  margin: 0 0 var(--space-2) 0;
+}
+
+.tp-editor-content li {
+  margin-bottom: 2px;
+}
+
+.tp-editor-content strong {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.tp-editor-content em {
+  font-style: italic;
+}
+
+.tp-editor-content .is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  font-style: italic;
+  pointer-events: none;
+  float: left;
+  height: 0;
 }

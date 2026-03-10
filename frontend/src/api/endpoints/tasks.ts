@@ -158,3 +158,71 @@ export async function getLabelsApi(
   )
   return res.data
 }
+
+// ── Sprint task assignment ─────────────────────────────────────────────────────
+
+export async function addTaskToSprintApi(
+  sprintId: string,
+  taskId: string
+): Promise<void> {
+  await apiClient.post(`/sprints/${sprintId}/tasks`, { task_id: taskId })
+}
+
+export async function removeTaskFromSprintApi(
+  sprintId: string,
+  taskId: string
+): Promise<void> {
+  await apiClient.delete(`/sprints/${sprintId}/tasks/${taskId}`)
+}
+
+// ── Sprint CRUD ────────────────────────────────────────────────────────────────
+
+export interface CreateSprintRequest {
+  name: string
+  goal?: string
+  start_date?: string
+  end_date?: string
+}
+
+export interface SprintResponse {
+  id: string
+  org_id: string
+  project_id: string
+  name: string
+  goal: string | null
+  status: 'planned' | 'active' | 'completed'
+  start_date: string | null
+  end_date: string | null
+  created_at: string
+}
+
+export async function createSprintApi(
+  slug: string,
+  projectId: string,
+  data: CreateSprintRequest
+): Promise<SprintResponse> {
+  const res = await apiClient.post<SprintResponse>(
+    `/organizations/${slug}/projects/${projectId}/sprints`,
+    data
+  )
+  return res.data
+}
+
+// ── Sprint lifecycle ───────────────────────────────────────────────────────────
+
+export async function startSprintApi(sprintId: string): Promise<SprintResponse> {
+  const res = await apiClient.post<SprintResponse>(`/sprints/${sprintId}/start`)
+  return res.data
+}
+
+export interface CompleteSprintRequest {
+  move_incomplete_to?: string  // sprint UUID to move incomplete tasks to, omit = backlog
+}
+
+export async function completeSprintApi(
+  sprintId: string,
+  data: CompleteSprintRequest = {}
+): Promise<SprintResponse> {
+  const res = await apiClient.post<SprintResponse>(`/sprints/${sprintId}/complete`, data)
+  return res.data
+}
