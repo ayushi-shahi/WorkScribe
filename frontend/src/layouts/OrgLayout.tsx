@@ -1,6 +1,8 @@
 import { Outlet, useParams, Navigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { getOrgApi } from '@/api/endpoints/organizations'
+import { getMeApi } from '@/api/endpoints/auth'
+import { useAuthStore } from '@/stores/authStore'
 import Sidebar from '@/components/layout/Sidebar'
 import Topbar from '@/components/layout/Topbar'
 import TaskPanel from '@/components/panel/TaskPanel'
@@ -8,6 +10,23 @@ import '@/styles/layout.css'
 
 export default function OrgLayout() {
   const { slug } = useParams<{ slug: string }>()
+  const user = useAuthStore((s) => s.user)
+  const setAuth = useAuthStore((s) => s.setAuth)
+  const accessToken = useAuthStore((s) => s.accessToken)
+
+  // Restore user after page reload (access token refreshed but user not re-fetched)
+  useQuery({
+    queryKey: ['me'],
+    queryFn: async () => {
+      const me = await getMeApi()
+      if (!user && accessToken) {
+        setAuth(accessToken, me)
+      }
+      return me
+    },
+    enabled: !user && !!accessToken,
+    staleTime: 5 * 60 * 1000,
+  })
 
   const {
     data: org,
@@ -24,26 +43,17 @@ export default function OrgLayout() {
 
   if (isLoading) {
     return (
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          height: '100vh',
-          background: 'var(--bg)',
-          color: 'var(--text-muted)',
-          fontFamily: 'var(--font)',
-          fontSize: 13,
-        }}
-      >
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        height: '100vh', background: 'var(--bg)', color: 'var(--text-muted)',
+        fontFamily: 'var(--font)', fontSize: 13,
+      }}>
         Loading...
       </div>
     )
   }
 
-  if (isError || !org) {
-    return <Navigate to="/login" replace />
-  }
+  if (isError || !org) return <Navigate to="/login" replace />
 
   return (
     <div className="app-shell">

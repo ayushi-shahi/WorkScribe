@@ -474,7 +474,9 @@ export default function BacklogPage() {
   if (!project || tasksLoading) return <BacklogSkeleton />
 
   const allTasks: Task[]     = enrichTasks(allTasksData?.tasks ?? [], statuses, project.key)
+    .filter((t) => t.type !== 'subtask')
   const backlogTasks: Task[] = enrichTasks(backlogData?.tasks ?? [], statuses, project.key)
+    .filter((t) => t.type !== 'subtask')
 
   function getSprintTasks(sprintId: string): Task[] {
     return allTasks.filter((t) => t.sprint_id === sprintId)

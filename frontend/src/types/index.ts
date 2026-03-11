@@ -43,7 +43,7 @@ export interface Task {
   org_id: string
   project_id: string
   number: number
-  task_id: string // e.g. "APP-1"
+  task_id: string
   title: string
   description_json: Record<string, unknown> | null
   status_id: string
@@ -54,6 +54,7 @@ export interface Task {
   reporter: TaskUser
   priority: 'urgent' | 'high' | 'medium' | 'low' | 'none'
   type: 'story' | 'bug' | 'task' | 'subtask'
+  parent_task_id: string | null   // ← ADD THIS
   labels: Label[]
   sprint_id: string | null
   position: number
@@ -123,6 +124,61 @@ export interface OrgMember {
   joined_at: string
 }
 
+export interface Comment {
+  id: string
+  task_id: string
+  author_id: string
+  author: {
+    id: string
+    display_name: string
+    email: string
+    avatar_url: string | null
+  }
+  body_json: {
+    type: string
+    content: unknown[]
+  }
+  is_edited: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface CommentListResponse {
+  comments: Comment[]
+  total: number
+  skip: number
+  limit: number
+}
+
+export interface ActivityEntry {
+  id: string
+  task_id: string
+  actor_id: string
+  actor: {
+    id: string
+    display_name: string
+    avatar_url: string | null
+  }
+  action: string
+  field_name: string | null
+  old_value: Record<string, unknown> | null
+  new_value: Record<string, unknown> | null
+  created_at: string
+}
+
+export interface ActivityListResponse {
+  activities: ActivityEntry[]
+  total: number
+  skip: number
+  limit: number
+}
+
+export interface TaskLink {
+  page_id: string
+  page_title: string
+  space_name: string
+  updated_at: string
+}
 export interface ApiError {
   code: string
   message: string

@@ -1,6 +1,6 @@
 # WorkScribe — Backend Progress
 
-**Last Updated:** 2026-03-09
+**Last Updated:** 2026-03-11
 **Latest Commit:** `feat: gaps 1-5 — pagination, backlog, wiki guards, sprint task assignment`
 **Alembic Head:** `d4e5f6a1b2c3` (create_notifications_table)
 **API:** `http://localhost:8001`
@@ -568,11 +568,11 @@ Replaced the `PATCH /tasks/{id}` workaround with proper dedicated endpoints.
 
 # Frontend Progress
 
-Last Updated: 2026-03-10
+Last Updated: 2026-03-11
 Backend: 100% complete
 Frontend location: /frontend
-Dev server: [http://localhost:5173](http://localhost:5173)
-Backend API: [http://localhost:8001/api/v1](http://localhost:8001/api/v1)
+Dev server: http://localhost:5173
+Backend API: http://localhost:8001/api/v1
 
 ### Frontend Status
 
@@ -604,16 +604,16 @@ Backend API: [http://localhost:8001/api/v1](http://localhost:8001/api/v1)
 | E1     | TaskPanel slide-in shell + URL param sync                         | ✅ Done |
 | E2     | Inline-editable fields (dropdowns for status, priority, assignee) | ✅ Done |
 | E3     | Tiptap description editor + localStorage autosave                 | ✅ Done |
-| E4     | Comments + delete own comment + optimistic add                    | ⬜ Next |
-| E5     | Activity log timeline                                             | ⬜      |
-| E6     | Linked docs                                                       | ⬜      |
-| E7     | Subtasks                                                          | ⬜      |
+| E4     | Comments + delete own comment + optimistic add                    | ✅ Done |
+| E5     | Activity log timeline                                             | ✅ Done |
+| E6     | Linked docs                                                       | ✅ Done |
+| E7     | Subtasks                                                          | ✅ Done |
 | F1     | BacklogPage (sprint sections + backlog section + inline create)   | ✅ Done |
 | F2     | BacklogTaskRow component                                          | ✅ Done |
 | F3     | Drag backlog ↔ sprint                                            | ✅ Done |
 | F4     | Create Sprint modal                                               | ✅ Done |
 | F5     | Start/Complete Sprint modals                                      | ✅ Done |
-| G1     | WikiLayout                                                        | ⬜      |
+| G1     | WikiLayout                                                        | ⬜ Next |
 | G2     | PageTree                                                          | ⬜      |
 | G3     | PageEditorPage shell                                              | ⬜      |
 | G4     | Tiptap editor full                                                | ⬜      |
@@ -684,6 +684,60 @@ Backend API: [http://localhost:8001/api/v1](http://localhost:8001/api/v1)
 * On task load: prefers localStorage draft over server content (handles panel close/reopen mid-edit)
 * Save status indicator: "Saving…" → "Saved" shown in toolbar
 * Editor content in .tp-editor-wrap, placeholder via .is-editor-empty:first-child::before
+
+#### E4 — Comments
+
+* Display comments list with author avatar, name, date
+* Optimistic add comment (appears instantly, rolls back on error)
+* Delete own comment (optimistic remove, trash icon on hover)
+* Cmd+Enter submit
+* Backend expects `{ body_json: <TiptapJSON> }` not `{ content: string }`
+* Backend returns `body_json` (Tiptap JSON) — extractCommentText() helper parses to plain text
+* isOwn uses `c.author_id` (top-level field), not `c.author.id` (nested)
+* Optimistic comment shape includes `author_id` at top level to match Comment interface
+* CSS hover: both `.task-comment:hover` and `.task-comment-body:hover` selectors needed
+
+#### E5 — Activity Log
+
+* ActivitySection component rendered at bottom of TaskPanel
+* Fetches GET /tasks/{id}/activity → { activities, total, skip, limit }
+* Backend action field is uppercase: `FIELD_UPDATED`, `TASK_CREATED`, `COMMENT_ADDED`, etc.
+* `old_value` / `new_value` are objects with the changed field as the key (e.g. `{ "priority": "high" }`) — field name extracted via `Object.keys(nv)[0]`
+* `formatActivity(entry, statuses, members)` resolves UUIDs to human-readable names:
+  * `status_id` → looked up in `statuses` array (already in scope)
+  * `assignee_id` → looked up in org members (fetched lazily, same query key as AssigneeDropdown so usually cached)
+* ActivitySection accepts `statuses` and `slug` props; fetches members internally via `['members', slug]` query
+* Produces strings like: "changed priority from "high" to "medium"", "changed status from "To Do" to "In Progress"", "set assignee to "Member User"", "created task "Cache invalidation test""
+
+#### E6 — Linked Docs
+
+* New file: `src/api/endpoints/links.ts` — getTaskLinksApi, createTaskLinkApi, deleteTaskLinkApi
+* New file: `src/api/endpoints/activity.ts` — getActivityApi, ActivityEntry, ActivityListResponse
+* New file: `src/api/endpoints/search.ts` — searchApi (already existed)
+* Backend returns `{ data: [], total: 0 }` for links — unwrapped as `res.data.data ?? []`
+* LinkDocModal: fixed-position modal with page search (debounced 300ms), filters already-linked pages
+* Search requires ≥1 character; uses searchApi with type='page'
+* Unlink: optimistic removal with rollback, X button visible on hover
+* Link search will return empty until wiki pages (G1+) are created — expected behavior
+* Escape closes modal; modal overlay click also closes
+* CSS: .tp-section-header, .tp-links-list, .tp-link-item, .tp-link-modal, etc. appended to taskPanel.css
+
+#### E7 — Subtasks
+
+* `getSubtasksApi(slug, projectId, parentTaskId)` — fetches with `type=subtask` filter, then client-side filters by `parent_task_id` (backend ignores `parent_task_id` as query param)
+* `parent_task_id: string | null` added to `Task` interface in `src/types/index.ts`
+* `SubtasksSection` component in `TaskPanel.tsx` — props: `{ parentTaskId, slug, projectId, statuses }`
+* Placed between Description and Linked Docs sections in task panel
+* Shows `SUBTASKS (done/total)` count in header + thin green progress bar
+* `doneCount` checks both `task.status?.category === 'done'` AND `task.status_id === doneStatusId` — list responses don't embed `status` object, only `status_id`
+* Each row: checkbox (Square/CheckSquare from lucide-react), task_id (mono), title, assignee avatar
+* Toggle done: optimistic update sets both `status_id` and `status` object; rollback on error
+* `isDone` in row render also checks both `status?.category` and `status_id` for same reason
+* "Add subtask" button → inline input row; Enter creates, Escape cancels
+* Creates with `type: 'subtask'`, `parent_task_id`, `status_id: todoStatus?.id`
+* Subtasks hidden from board (BoardPage) and backlog (BacklogPage) via `.filter((t) => t.type !== 'subtask')`
+* Query key: `['subtasks', parentTaskId]`
+* CSS appended to taskPanel.css: `.tp-subtasks-progress`, `.tp-subtask-row`, `.tp-subtask-check`, `.tp-subtask-input-row`, etc.
 
 #### F1 — BacklogPage
 
@@ -762,8 +816,12 @@ frontend/src/
 │       │                             updateTaskApi, deleteTaskApi, moveTaskApi,
 │       │                             bulkUpdatePositionsApi, getSprintsApi, getLabelsApi,
 │       │                             addTaskToSprintApi, removeTaskFromSprintApi,
-│       │                             createSprintApi, startSprintApi, completeSprintApi
+│       │                             createSprintApi, startSprintApi, completeSprintApi,
+│       │                             getSubtasksApi
 │       ├── comments.ts            ✅ getCommentsApi, createCommentApi, deleteCommentApi
+│       ├── links.ts               ✅ getTaskLinksApi, createTaskLinkApi, deleteTaskLinkApi
+│       ├── activity.ts            ✅ getActivityApi
+│       ├── search.ts              ✅ searchApi
 │       └── wiki.ts                ✅
 ├── stores/
 │   ├── authStore.ts               ✅
@@ -779,10 +837,10 @@ frontend/src/
 │   ├── wizard.css                 ✅
 │   ├── layout.css                 ✅
 │   ├── board.css                  ✅
-│   ├── taskPanel.css              ✅ + E2 dropdown styles + E3 Tiptap editor styles
-│   └── backlog.css                ✅ + F3 dnd styles + F4 modal styles + F5 sprint action styles
+│   ├── taskPanel.css              ✅ + E2 dropdowns + E3 Tiptap + E4 comments + E6 linked docs + E7 subtasks
+│   └── backlog.css                ✅ + F3 dnd + F4 modal + F5 sprint actions
 ├── types/
-│   └── index.ts                   ✅ All TypeScript interfaces
+│   └── index.ts                   ✅ All TypeScript interfaces (incl. Comment, TaskLink, parent_task_id on Task)
 ├── pages/
 │   ├── LoginPage.tsx              ✅
 │   ├── RegisterPage.tsx           ✅
@@ -791,8 +849,8 @@ frontend/src/
 │   ├── OrgCreatePage.tsx          ✅
 │   ├── AcceptInvitePage.tsx       ✅
 │   ├── DashboardPage.tsx          ⬜ stub
-│   ├── BoardPage.tsx              ✅ DnD + sprint filter + filter toolbar + CreateTaskModal + task_id enrichment
-│   ├── BacklogPage.tsx            ✅ dnd-kit + Sprint sections + Create/Start/Complete sprint modals
+│   ├── BoardPage.tsx              ✅ DnD + sprint filter + filter toolbar + CreateTaskModal + task_id enrichment + subtask filter
+│   ├── BacklogPage.tsx            ✅ dnd-kit + Sprint sections + Create/Start/Complete sprint modals + subtask filter
 │   ├── WikiHomePage.tsx           ⬜ stub
 │   ├── PageEditorPage.tsx         ⬜ stub
 │   ├── OrgSettingsPage.tsx        ⬜ stub
@@ -811,12 +869,12 @@ frontend/src/
 │   │   ├── BoardColumn.tsx        ✅
 │   │   └── CreateTaskModal.tsx    ✅
 │   ├── backlog/
-│   │   ├── BacklogTaskRow.tsx     ✅ F2 — extracted task row component
+│   │   ├── BacklogTaskRow.tsx     ✅ F2
 │   │   ├── CreateSprintModal.tsx  ✅ F4
 │   │   ├── StartSprintModal.tsx   ✅ F5
 │   │   └── CompleteSprintModal.tsx ✅ F5
 │   └── panel/
-│       └── TaskPanel.tsx          ✅ E2 dropdowns + E3 Tiptap editor + useResolveTaskId fix
+│       └── TaskPanel.tsx          ✅ E2–E7 complete
 └── App.tsx                        ✅
 ```
 
@@ -827,14 +885,16 @@ frontend/src/
 * Dark theme only — CSS variables in src/styles/tokens.css, no Tailwind
 * Refresh token stored in sessionStorage key "refresh_token"
 * Token refresh: silent via Axios interceptor, concurrent 401s queued
+* setTokenGetter pattern dropped — useAuthStore imported directly in client.ts
 * sprintId string (not object) in React Query board cache key
-* useResolveTaskId searches board cache by task_id, falls back to number match, then backlog cache, then UUID passthrough
+* useResolveTaskId searches board cache by task_id, falls back to number match (APP-2 → 2), then backlog cache, then UUID passthrough
 * Task panel reads ?task=APP-1 URL param and resolves to UUID via cache
-* noUncheckedIndexedAccess + exactOptionalPropertyTypes removed from tsconfig
-* Optimistic updates on board DnD and backlog DnD with rollback on error
-* getOrgMembersApi returns { members, total } — always unwrap with Array.isArray guard
-* Board query cache prefix ['board', slug] used for invalidation
+* noUncheckedIndexedAccess + exactOptionalPropertyTypes removed from tsconfig (too aggressive)
+* Optimistic updates on board DnD, backlog DnD, comments, linked docs, and subtask toggles with rollback on error
+* getOrgMembersApi returns { members, total } object — always unwrap with Array.isArray guard
+* Board query cache prefix ['board', slug] used for invalidation — catches all sprint variants
 * task.status may be undefined on list responses — always use optional chain task.status?.category
+* task.status_id is always present on list responses — use as fallback when status object absent (critical for subtask doneCount and toggle)
 * statusColor exists in taskHelpers.ts; local categoryColor() used inside CreateTaskModal
 * showAllTasks defaults to true on BoardPage so tasks without sprint are always visible
 * Backlog page uses two separate queries: all tasks (for sprint grouping) + pure backlog tasks
@@ -844,20 +904,30 @@ frontend/src/
 * Description autosave: localStorage draft keyed task-desc-draft:{resolvedId}, 1500ms debounce to API, draft cleared on successful save
 * Hooks must never be called after conditional returns (guards kept after all hooks)
 * useMemo used for useResolveTaskId to avoid re-computation on every render
+* Slug availability check hits GET /organizations/{slug} — 404 = available
+* Comments use body_json (Tiptap JSON) for both send and receive — never plain content string
+* isOwn for comments uses c.author_id (top-level) not c.author.id (nested) for reliability
+* Optimistic comment shape must match full Comment interface including author_id field
+* Activity log: action is uppercase (`FIELD_UPDATED`, `TASK_CREATED`); old_value/new_value are objects keyed by field name; UUIDs resolved to names via statuses array + members query
+* Links API returns { data: [], total: 0 } — unwrap as res.data.data ?? []
+* Link search modal requires ≥1 character typed; filters already-linked pages from results
+* Wiki page linking works end-to-end but search returns empty until G1+ wiki pages are created
+* Subtask filtering: client-side by parent_task_id after fetching type=subtask (backend ignores parent_task_id query param)
+* Subtasks hidden from board and backlog via .filter((t) => t.type !== 'subtask') at render time
+* Subtask toggle done: always check both task.status?.category AND task.status_id === doneStatus.id
+
+---
 
 ### Test Credentials (local dev)
 
-| Email                                        | Password    | Role               |
-| -------------------------------------------- | ----------- | ------------------ |
-| [test@example.com](mailto:test@example.com)     | password123 | Owner of test-org  |
-| [member@example.com](mailto:member@example.com) | password123 | Member of test-org |
-
-|  |  |  |
-| - | - | - |
-|  |  |  |
+| Email              | Password    | Role               |
+| ------------------ | ----------- | ------------------ |
+| test@example.com   | password123 | Owner of test-org  |
+| member@example.com | password123 | Member of test-org |
 
 * Org slug: `test-org`
 * Project key: `APP`
+* Project ID: f2e0986e-f09c-4cb8-8b84-45ef711c8133
 * Dark theme only — CSS variables from tokens.css, no Tailwind
 * Refresh token stored in sessionStorage (not localStorage)
 * Token refresh: silent via Axios interceptor, concurrent 401s queued

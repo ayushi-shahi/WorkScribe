@@ -1,22 +1,7 @@
 import apiClient from '@/api/client'
+import type { Comment, CommentListResponse } from '@/types'
 
-export interface Comment {
-  id: string
-  task_id: string
-  author: {
-    id: string
-    display_name: string
-    email: string
-  }
-  content: string
-  created_at: string
-  updated_at: string
-}
-
-export interface CommentListResponse {
-  comments: Comment[]
-  total: number
-}
+export type { Comment, CommentListResponse }
 
 export async function getCommentsApi(taskId: string): Promise<CommentListResponse> {
   const res = await apiClient.get<CommentListResponse>(`/tasks/${taskId}/comments`)
@@ -27,7 +12,16 @@ export async function createCommentApi(
   taskId: string,
   content: string
 ): Promise<Comment> {
-  const res = await apiClient.post<Comment>(`/tasks/${taskId}/comments`, { content })
+  const body_json = {
+    type: 'doc',
+    content: [
+      {
+        type: 'paragraph',
+        content: content.trim() ? [{ type: 'text', text: content.trim() }] : [],
+      },
+    ],
+  }
+  const res = await apiClient.post<Comment>(`/tasks/${taskId}/comments`, { body_json })
   return res.data
 }
 

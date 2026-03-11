@@ -4,7 +4,7 @@ import type { Task, TaskStatus, Label } from '@/types'
 
 export interface CreateTaskRequest {
   title: string
-  status_id: string
+  status_id?: string
   assignee_id?: string
   priority?: 'urgent' | 'high' | 'medium' | 'low' | 'none'
   type?: 'story' | 'bug' | 'task' | 'subtask'
@@ -51,6 +51,7 @@ export interface BoardFilters {
   type?: string
   sprint_id?: string
   search?: string
+  parent_task_id?: string
 }
 
 export async function getTasksApi(
@@ -63,12 +64,13 @@ export async function getTasksApi(
   const params = new URLSearchParams()
   params.set('skip', String(skip))
   params.set('limit', String(limit))
-  if (filters.assignee_id) params.set('assignee_id', filters.assignee_id)
-  if (filters.priority)    params.set('priority',    filters.priority)
-  if (filters.label_id)    params.set('label_id',    filters.label_id)
-  if (filters.type)        params.set('type',        filters.type)
-  if (filters.sprint_id)   params.set('sprint_id',   filters.sprint_id)
-  if (filters.search)      params.set('search',      filters.search)
+  if (filters.assignee_id)    params.set('assignee_id',    filters.assignee_id)
+  if (filters.priority)       params.set('priority',       filters.priority)
+  if (filters.label_id)       params.set('label_id',       filters.label_id)
+  if (filters.type)           params.set('type',           filters.type)
+  if (filters.sprint_id)      params.set('sprint_id',      filters.sprint_id)
+  if (filters.search)         params.set('search',         filters.search)
+  if (filters.parent_task_id) params.set('parent_task_id', filters.parent_task_id)
 
   const res = await apiClient.get<TaskListResponse>(
     `/organizations/${slug}/projects/${projectId}/tasks?${params.toString()}`
@@ -89,6 +91,18 @@ export async function getBacklogApi(
     `/organizations/${slug}/projects/${projectId}/backlog?${params.toString()}`
   )
   return res.data
+}
+
+export async function getSubtasksApi(
+  slug: string,
+  projectId: string,
+  parentTaskId: string
+): Promise<TaskListResponse> {
+  // Fetch all subtask-type tasks, then filter client-side by parent_task_id
+  // (backend may not support parent_task_id as a query filter)
+  const result = await getTasksApi(slug, projectId, { type: 'subtask' }, 0, 100)
+  const filtered = result.tasks.filter((t) => t.parent_task_id === parentTaskId)
+  return { ...result, tasks: filtered, total: filtered.length }
 }
 
 export async function getTaskApi(taskId: string): Promise<Task> {
@@ -216,7 +230,7 @@ export async function startSprintApi(sprintId: string): Promise<SprintResponse> 
 }
 
 export interface CompleteSprintRequest {
-  move_incomplete_to?: string  // sprint UUID to move incomplete tasks to, omit = backlog
+  move_incomplete_to?: string
 }
 
 export async function completeSprintApi(
@@ -224,5 +238,12 @@ export async function completeSprintApi(
   data: CompleteSprintRequest = {}
 ): Promise<SprintResponse> {
   const res = await apiClient.post<SprintResponse>(`/sprints/${sprintId}/complete`, data)
+  return res.data
+}
+
+// ── Activity log ───────────────────────────────────────────────────────────────
+
+export async function getActivityApi(taskId: string): Promise<import('@/types').ActivityListResponse> {
+  const res = await apiClient.get(`/tasks/${taskId}/activity`)
   return res.data
 }

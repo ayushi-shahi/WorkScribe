@@ -1,16 +1,20 @@
-import { useEffect, useRef, useState, useCallback } from 'react'
+// src/components/panel/TaskPanel.tsx
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { X, ExternalLink, Send, ChevronDown, Check } from 'lucide-react'
+import { X, ExternalLink, ChevronDown, Check, Send, Trash2, FileText, Plus, Link2, CheckSquare, Square } from 'lucide-react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
-import { getTaskApi, updateTaskApi } from '@/api/endpoints/tasks'
+import { getTaskApi, updateTaskApi, getSubtasksApi, createTaskApi } from '@/api/endpoints/tasks'
 import { getProjectStatusesApi } from '@/api/endpoints/projects'
-import { getCommentsApi, createCommentApi } from '@/api/endpoints/comments'
+import { getCommentsApi, createCommentApi, deleteCommentApi } from '@/api/endpoints/comments'
+import { getTaskLinksApi, createTaskLinkApi, deleteTaskLinkApi } from '@/api/endpoints/links'
 import { getOrgMembersApi } from '@/api/endpoints/organizations'
+import { searchApi } from '@/api/endpoints/search'
 import { useAuthStore } from '@/stores/authStore'
 import { priorityColor, statusColor, getInitials } from '@/lib/taskHelpers'
+import type { Comment, TaskLink, Task, TaskStatus } from '@/types'
 import '@/styles/taskPanel.css'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
@@ -59,11 +63,29 @@ function useClickOutside(ref: React.RefObject<HTMLElement | null>, handler: () =
   }, [ref, handler])
 }
 
+// ── Extract plain text from Tiptap body_json ──────────────────────────────────
+
+function extractCommentText(body_json: { type: string; content: unknown[] }): string {
+  try {
+    const paragraphs = body_json.content as Array<{
+      type: string
+      content?: Array<{ type: string; text?: string }>
+    }>
+    return paragraphs
+      .flatMap((p) => p.content ?? [])
+      .filter((n) => n.type === 'text')
+      .map((n) => n.text ?? '')
+      .join('')
+  } catch {
+    return ''
+  }
+}
+
 // ── StatusDropdown ────────────────────────────────────────────────────────────
 
 interface StatusDropdownProps {
   currentStatusId: string
-  statuses: import('@/types').TaskStatus[]
+  statuses: TaskStatus[]
   onSelect: (statusId: string) => void
   disabled?: boolean
 }
@@ -72,7 +94,6 @@ function StatusDropdown({ currentStatusId, statuses, onSelect, disabled }: Statu
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   useClickOutside(ref, () => setOpen(false))
-
   const current = statuses.find((s) => s.id === currentStatusId)
 
   function handleSelect(statusId: string) {
@@ -82,19 +103,11 @@ function StatusDropdown({ currentStatusId, statuses, onSelect, disabled }: Statu
 
   return (
     <div className="tp-dropdown-wrap" ref={ref}>
-      <button
-        className="tp-field-btn"
-        onClick={() => !disabled && setOpen((o) => !o)}
-        disabled={disabled}
-      >
-        <span
-          className="tp-status-dot"
-          style={{ background: statusColor(current?.category ?? 'todo') }}
-        />
+      <button className="tp-field-btn" onClick={() => !disabled && setOpen((o) => !o)} disabled={disabled}>
+        <span className="tp-status-dot" style={{ background: statusColor(current?.category ?? 'todo') }} />
         <span className="tp-field-btn-text">{current?.name ?? '—'}</span>
         <ChevronDown size={11} className="tp-chevron" />
       </button>
-
       {open && (
         <div className="tp-dropdown">
           {statuses.map((s) => (
@@ -103,10 +116,7 @@ function StatusDropdown({ currentStatusId, statuses, onSelect, disabled }: Statu
               className={`tp-dropdown-item${s.id === currentStatusId ? ' tp-dropdown-item--active' : ''}`}
               onClick={() => handleSelect(s.id)}
             >
-              <span
-                className="tp-status-dot"
-                style={{ background: statusColor(s.category) }}
-              />
+              <span className="tp-status-dot" style={{ background: statusColor(s.category) }} />
               <span className="tp-dropdown-item-label">{s.name}</span>
               {s.id === currentStatusId && <Check size={11} className="tp-check" />}
             </button>
@@ -142,16 +152,10 @@ function PriorityDropdown({ current, onSelect, disabled }: PriorityDropdownProps
         onClick={() => !disabled && setOpen((o) => !o)}
         disabled={disabled}
       >
-        <span
-          className="tp-priority-dot"
-          style={{ background: priorityColor(current) }}
-        />
-        <span className="tp-field-btn-text" style={{ textTransform: 'capitalize' }}>
-          {current}
-        </span>
+        <span className="tp-priority-dot" style={{ background: priorityColor(current) }} />
+        <span className="tp-field-btn-text" style={{ textTransform: 'capitalize' }}>{current}</span>
         <ChevronDown size={11} className="tp-chevron" />
       </button>
-
       {open && (
         <div className="tp-dropdown">
           {PRIORITY_OPTIONS.map((opt) => (
@@ -160,10 +164,7 @@ function PriorityDropdown({ current, onSelect, disabled }: PriorityDropdownProps
               className={`tp-dropdown-item${opt.value === current ? ' tp-dropdown-item--active' : ''}`}
               onClick={() => handleSelect(opt.value)}
             >
-              <span
-                className="tp-priority-dot"
-                style={{ background: priorityColor(opt.value) }}
-              />
+              <span className="tp-priority-dot" style={{ background: priorityColor(opt.value) }} />
               <span className="tp-dropdown-item-label">{opt.label}</span>
               {opt.value === current && <Check size={11} className="tp-check" />}
             </button>
@@ -184,13 +185,7 @@ interface AssigneeDropdownProps {
   disabled?: boolean
 }
 
-function AssigneeDropdown({
-  currentAssigneeId,
-  currentAssigneeName,
-  slug,
-  onSelect,
-  disabled,
-}: AssigneeDropdownProps) {
+function AssigneeDropdown({ currentAssigneeId, currentAssigneeName, slug, onSelect, disabled }: AssigneeDropdownProps) {
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
   const ref = useRef<HTMLDivElement>(null)
@@ -228,9 +223,7 @@ function AssigneeDropdown({
       <button className="tp-field-btn" onClick={handleOpen} disabled={disabled}>
         {currentAssigneeId ? (
           <>
-            <span className="tp-assignee-avatar">
-              {getInitials(currentAssigneeName ?? '?')}
-            </span>
+            <span className="tp-assignee-avatar">{getInitials(currentAssigneeName ?? '?')}</span>
             <span className="tp-field-btn-text">{currentAssigneeName}</span>
           </>
         ) : (
@@ -238,7 +231,6 @@ function AssigneeDropdown({
         )}
         <ChevronDown size={11} className="tp-chevron" />
       </button>
-
       {open && (
         <div className="tp-dropdown tp-dropdown--assignee">
           <div className="tp-dropdown-search-wrap">
@@ -266,9 +258,7 @@ function AssigneeDropdown({
                 className={`tp-dropdown-item${m.user_id === currentAssigneeId ? ' tp-dropdown-item--active' : ''}`}
                 onClick={() => handleSelect(m.user_id)}
               >
-                <span className="tp-assignee-avatar">
-                  {getInitials(m.display_name)}
-                </span>
+                <span className="tp-assignee-avatar">{getInitials(m.display_name)}</span>
                 <div className="tp-assignee-info">
                   <span className="tp-dropdown-item-label">{m.display_name}</span>
                   <span className="tp-assignee-email">{m.email}</span>
@@ -280,6 +270,300 @@ function AssigneeDropdown({
               <div className="tp-dropdown-empty">No members found</div>
             )}
           </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── LinkDocModal ──────────────────────────────────────────────────────────────
+
+interface LinkDocModalProps {
+  slug: string
+  taskId: string
+  existingPageIds: string[]
+  onClose: () => void
+  onLinked: () => void
+}
+
+function LinkDocModal({ slug, taskId, existingPageIds, onClose, onLinked }: LinkDocModalProps) {
+  const [query, setQuery] = useState('')
+  const debouncedQuery = useDebounce(query, 300)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const queryClient = useQueryClient()
+
+  useEffect(() => {
+    setTimeout(() => inputRef.current?.focus(), 50)
+  }, [])
+
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  const { data: results = [], isFetching } = useQuery({
+    queryKey: ['search-pages', slug, debouncedQuery],
+    queryFn: () => searchApi(slug, debouncedQuery, 'page'),
+    enabled: debouncedQuery.length >= 1,
+    staleTime: 10_000,
+  })
+
+  const linkMutation = useMutation({
+    mutationFn: (pageId: string) => createTaskLinkApi(taskId, pageId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['links', taskId] })
+      onLinked()
+      onClose()
+    },
+  })
+
+  const filtered = results.filter((r) => !existingPageIds.includes(r.id))
+
+  return (
+    <>
+      <div className="tp-link-modal-overlay" onClick={onClose} />
+      <div className="tp-link-modal">
+        <div className="tp-link-modal-header">
+          <span className="tp-link-modal-title">Link a document</span>
+          <button className="task-panel-icon-btn" onClick={onClose}>
+            <X size={14} />
+          </button>
+        </div>
+        <div className="tp-link-modal-search">
+          <input
+            ref={inputRef}
+            className="tp-dropdown-search"
+            placeholder="Search pages…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            style={{ width: '100%' }}
+          />
+        </div>
+        <div className="tp-link-modal-results">
+          {debouncedQuery.length === 0 && (
+            <div className="tp-link-modal-empty">Type to search pages…</div>
+          )}
+          {debouncedQuery.length > 0 && !isFetching && filtered.length === 0 && (
+            <div className="tp-link-modal-empty">No pages found</div>
+          )}
+          {filtered.map((r) => (
+            <button
+              key={r.id}
+              className="tp-link-modal-result"
+              onClick={() => linkMutation.mutate(r.id)}
+              disabled={linkMutation.isPending}
+            >
+              <FileText size={13} className="tp-link-modal-result-icon" />
+              <div className="tp-link-modal-result-info">
+                <span className="tp-link-modal-result-title">{r.title}</span>
+                <span className="tp-link-modal-result-sub">{r.subtitle}</span>
+              </div>
+              <Plus size={13} className="tp-link-modal-result-add" />
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ── SubtasksSection ───────────────────────────────────────────────────────────
+
+interface SubtasksSectionProps {
+  parentTaskId: string
+  slug: string
+  projectId: string
+  statuses: TaskStatus[]
+}
+
+function SubtasksSection({ parentTaskId, slug, projectId, statuses }: SubtasksSectionProps) {
+  const queryClient = useQueryClient()
+  const [showInput, setShowInput] = useState(false)
+  const [newTitle, setNewTitle] = useState('')
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const todoStatus = statuses.find((s) => s.category === 'todo')
+  const doneStatus = statuses.find((s) => s.category === 'done')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['subtasks', parentTaskId],
+    queryFn: () => getSubtasksApi(slug, projectId, parentTaskId),
+    enabled: Boolean(slug && projectId && parentTaskId),
+    staleTime: 30_000,
+  })
+
+  const subtasks: Task[] = data?.tasks ?? []
+
+  // ── Toggle done ───────────────────────────────────────────────────────────
+  const toggleMutation = useMutation({
+    mutationFn: ({ taskId, statusId }: { taskId: string; statusId: string }) =>
+      updateTaskApi(taskId, { status_id: statusId }),
+    onMutate: async ({ taskId, statusId }) => {
+      await queryClient.cancelQueries({ queryKey: ['subtasks', parentTaskId] })
+      const snapshot = queryClient.getQueryData<{ tasks: Task[]; total: number }>(['subtasks', parentTaskId])
+      const targetStatus = statuses.find((s) => s.id === statusId)
+      queryClient.setQueryData<{ tasks: Task[]; total: number }>(['subtasks', parentTaskId], (old) => {
+        if (!old) return old
+        return {
+          ...old,
+          tasks: old.tasks.map((t) =>
+            t.id !== taskId
+              ? t
+              : { ...t, status_id: statusId, status: targetStatus ?? t.status }
+          ),
+        }
+      })
+      return { snapshot }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.snapshot) queryClient.setQueryData(['subtasks', parentTaskId], ctx.snapshot)
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['subtasks', parentTaskId] })
+    },
+  })
+
+  // ── Create subtask ────────────────────────────────────────────────────────
+  const createMutation = useMutation({
+    mutationFn: (title: string) =>
+      createTaskApi(slug, projectId, {
+        title,
+        parent_task_id: parentTaskId,
+        type: 'subtask',
+        status_id: todoStatus?.id,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['subtasks', parentTaskId] })
+      setNewTitle('')
+      setShowInput(false)
+    },
+  })
+
+  useEffect(() => {
+    if (showInput) setTimeout(() => inputRef.current?.focus(), 50)
+  }, [showInput])
+
+  function handleToggle(task: Task) {
+    const doneStatus = statuses.find((s) => s.category === 'done')
+    const todoStatus = statuses.find((s) => s.category === 'todo')
+    if (!doneStatus || !todoStatus) return
+    const isDone = task.status?.category === 'done' || task.status_id === doneStatus.id
+    toggleMutation.mutate({ taskId: task.id, statusId: isDone ? todoStatus.id : doneStatus.id })
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter' && newTitle.trim()) {
+      createMutation.mutate(newTitle.trim())
+    } else if (e.key === 'Escape') {
+      setShowInput(false)
+      setNewTitle('')
+    }
+  }
+
+  const doneStatusId = statuses.find((s) => s.category === 'done')?.id
+  const doneCount = subtasks.filter((t) =>
+    t.status?.category === 'done' || t.status_id === doneStatusId
+  ).length
+  const totalCount = subtasks.length
+
+  return (
+    <div>
+      <div className="tp-section-header">
+        <span className="task-panel-section-label" style={{ marginBottom: 0 }}>
+          Subtasks{totalCount > 0 ? ` (${doneCount}/${totalCount})` : ''}
+        </span>
+        <button
+          className="tp-section-add-btn"
+          onClick={() => setShowInput((v) => !v)}
+          title="Add subtask"
+        >
+          <Plus size={12} />
+          Add subtask
+        </button>
+      </div>
+
+      {/* Progress bar — only shown when there are subtasks */}
+      {totalCount > 0 && (
+        <div className="tp-subtasks-progress">
+          <div
+            className="tp-subtasks-progress-bar"
+            style={{ width: `${Math.round((doneCount / totalCount) * 100)}%` }}
+          />
+        </div>
+      )}
+
+      {isLoading && (
+        <div className="tp-subtasks-loading">
+          <div className="skeleton" style={{ height: 28, width: '100%', borderRadius: 6 }} />
+          <div className="skeleton" style={{ height: 28, width: '80%', borderRadius: 6 }} />
+        </div>
+      )}
+
+      {!isLoading && subtasks.length > 0 && (
+        <div className="tp-subtasks-list">
+          {subtasks.map((task) => {
+            const doneStatusId = statuses.find((s) => s.category === 'done')?.id
+            const isDone = task.status?.category === 'done' || task.status_id === doneStatusId
+            return (
+              <div key={task.id} className={`tp-subtask-row${isDone ? ' tp-subtask-row--done' : ''}`}>
+                <button
+                  type="button"
+                  className="tp-subtask-check"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleToggle(task) }}
+                  disabled={toggleMutation.isPending}
+                  title={isDone ? 'Mark incomplete' : 'Mark complete'}
+                >
+                  {isDone
+                    ? <CheckSquare size={15} className="tp-subtask-check-icon tp-subtask-check-icon--done" />
+                    : <Square size={15} className="tp-subtask-check-icon" />
+                  }
+                </button>
+                <span className="tp-subtask-id">{task.task_id}</span>
+                <span className="tp-subtask-title">{task.title}</span>
+                {task.assignee && (
+                  <span className="tp-subtask-assignee" title={task.assignee.display_name}>
+                    {getInitials(task.assignee.display_name)}
+                  </span>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {!isLoading && subtasks.length === 0 && !showInput && (
+        <div className="tp-subtasks-empty">No subtasks yet</div>
+      )}
+
+      {/* Inline create input */}
+      {showInput && (
+        <div className="tp-subtask-input-row">
+          <Square size={15} className="tp-subtask-check-icon tp-subtask-input-icon" />
+          <input
+            ref={inputRef}
+            className="tp-subtask-input"
+            placeholder="Subtask title…"
+            value={newTitle}
+            onChange={(e) => setNewTitle(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={createMutation.isPending}
+          />
+          <button
+            className="tp-subtask-input-save"
+            onClick={() => newTitle.trim() && createMutation.mutate(newTitle.trim())}
+            disabled={!newTitle.trim() || createMutation.isPending}
+          >
+            {createMutation.isPending ? '…' : 'Add'}
+          </button>
+          <button
+            className="tp-subtask-input-cancel"
+            onClick={() => { setShowInput(false); setNewTitle('') }}
+          >
+            <X size={13} />
+          </button>
         </div>
       )}
     </div>
@@ -299,7 +583,10 @@ export default function TaskPanel() {
 
   const [title, setTitle] = useState('')
   const [comment, setComment] = useState('')
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null)
+  const [showLinkModal, setShowLinkModal] = useState(false)
   const titleRef = useRef<HTMLTextAreaElement>(null)
+  const commentInputRef = useRef<HTMLTextAreaElement>(null)
   const debouncedTitle = useDebounce(title, 600)
 
   const resolvedId = useResolveTaskId(taskIdParam, slug)
@@ -324,7 +611,14 @@ export default function TaskPanel() {
     enabled: !!resolvedId,
     staleTime: 30_000,
   })
-  const comments = commentData?.comments ?? []
+  const comments: Comment[] = commentData?.comments ?? []
+
+  const { data: links = [] } = useQuery({
+    queryKey: ['links', resolvedId],
+    queryFn: () => getTaskLinksApi(resolvedId!),
+    enabled: !!resolvedId,
+    staleTime: 30_000,
+  })
 
   useEffect(() => {
     if (task) setTitle(task.title)
@@ -332,8 +626,7 @@ export default function TaskPanel() {
 
   // ── Title autosave ────────────────────────────────────────────────────────
   const titleMutation = useMutation({
-    mutationFn: (newTitle: string) =>
-      updateTaskApi(resolvedId!, { title: newTitle }),
+    mutationFn: (newTitle: string) => updateTaskApi(resolvedId!, { title: newTitle }),
     onSuccess: (updated) => {
       queryClient.setQueryData(['task', resolvedId], updated)
       queryClient.invalidateQueries({ queryKey: ['board'] })
@@ -349,8 +642,7 @@ export default function TaskPanel() {
 
   // ── Status mutation ───────────────────────────────────────────────────────
   const statusMutation = useMutation({
-    mutationFn: (statusId: string) =>
-      updateTaskApi(resolvedId!, { status_id: statusId }),
+    mutationFn: (statusId: string) => updateTaskApi(resolvedId!, { status_id: statusId }),
     onSuccess: (updated) => {
       queryClient.setQueryData(['task', resolvedId], updated)
       queryClient.invalidateQueries({ queryKey: ['board'] })
@@ -360,8 +652,7 @@ export default function TaskPanel() {
 
   // ── Priority mutation ─────────────────────────────────────────────────────
   const priorityMutation = useMutation({
-    mutationFn: (priority: PriorityValue) =>
-      updateTaskApi(resolvedId!, { priority }),
+    mutationFn: (priority: PriorityValue) => updateTaskApi(resolvedId!, { priority }),
     onSuccess: (updated) => {
       queryClient.setQueryData(['task', resolvedId], updated)
       queryClient.invalidateQueries({ queryKey: ['board'] })
@@ -371,8 +662,7 @@ export default function TaskPanel() {
 
   // ── Assignee mutation ─────────────────────────────────────────────────────
   const assigneeMutation = useMutation({
-    mutationFn: (assigneeId: string | null) =>
-      updateTaskApi(resolvedId!, { assignee_id: assigneeId }),
+    mutationFn: (assigneeId: string | null) => updateTaskApi(resolvedId!, { assignee_id: assigneeId }),
     onSuccess: (updated) => {
       queryClient.setQueryData(['task', resolvedId], updated)
       queryClient.invalidateQueries({ queryKey: ['board'] })
@@ -384,8 +674,7 @@ export default function TaskPanel() {
   const DRAFT_KEY = `task-desc-draft:${resolvedId}`
 
   const descMutation = useMutation({
-    mutationFn: (json: Record<string, unknown>) =>
-      updateTaskApi(resolvedId!, { description_json: json }),
+    mutationFn: (json: Record<string, unknown>) => updateTaskApi(resolvedId!, { description_json: json }),
     onSuccess: (updated) => {
       queryClient.setQueryData(['task', resolvedId], updated)
       localStorage.removeItem(DRAFT_KEY)
@@ -394,9 +683,7 @@ export default function TaskPanel() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const debouncedDescSave = useCallback(
-    debounce((json: Record<string, unknown>) => {
-      descMutation.mutate(json)
-    }, 1500),
+    debounce((json: Record<string, unknown>) => { descMutation.mutate(json) }, 1500),
     [resolvedId]
   )
 
@@ -406,12 +693,7 @@ export default function TaskPanel() {
       Placeholder.configure({ placeholder: 'Add a description…' }),
     ],
     content: '',
-    editorProps: {
-      attributes: {
-        class: 'tp-editor-content',
-        spellcheck: 'false',
-      },
-    },
+    editorProps: { attributes: { class: 'tp-editor-content', spellcheck: 'false' } },
     onUpdate: ({ editor }) => {
       const json = editor.getJSON() as Record<string, unknown>
       localStorage.setItem(DRAFT_KEY, JSON.stringify(json))
@@ -419,23 +701,89 @@ export default function TaskPanel() {
     },
   })
 
-  // Load content when task loads — prefer localStorage draft
   useEffect(() => {
     if (!editor || !task) return
     const draft = localStorage.getItem(DRAFT_KEY)
-    const content = draft
-      ? JSON.parse(draft)
-      : (task.description_json ?? '')
+    const content = draft ? JSON.parse(draft) : (task.description_json ?? '')
     editor.commands.setContent(content, false)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task?.id, editor])
 
-  // ── Comment submit ────────────────────────────────────────────────────────
+  // ── Comment submit — optimistic ───────────────────────────────────────────
   const commentMutation = useMutation({
     mutationFn: () => createCommentApi(resolvedId!, comment.trim()),
-    onSuccess: () => {
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ['comments', resolvedId] })
+      const previous = queryClient.getQueryData<{ comments: Comment[]; total: number }>(['comments', resolvedId])
+      const optimistic: Comment = {
+        id: `optimistic-${Date.now()}`,
+        task_id: resolvedId!,
+        author_id: user?.id ?? '',
+        author: {
+          id: user?.id ?? '',
+          display_name: user?.display_name ?? '',
+          email: user?.email ?? '',
+          avatar_url: null,
+        },
+        body_json: {
+          type: 'doc',
+          content: [{ type: 'paragraph', content: [{ type: 'text', text: comment.trim() }] }],
+        },
+        is_edited: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }
+      queryClient.setQueryData(['comments', resolvedId], {
+        comments: [...(previous?.comments ?? []), optimistic],
+        total: (previous?.total ?? 0) + 1,
+      })
       setComment('')
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(['comments', resolvedId], context.previous)
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['comments', resolvedId] })
+    },
+  })
+
+  // ── Comment delete ────────────────────────────────────────────────────────
+  const deleteCommentMutation = useMutation({
+    mutationFn: (commentId: string) => deleteCommentApi(resolvedId!, commentId),
+    onMutate: async (commentId) => {
+      setDeletingCommentId(commentId)
+      await queryClient.cancelQueries({ queryKey: ['comments', resolvedId] })
+      const previous = queryClient.getQueryData<{ comments: Comment[]; total: number }>(['comments', resolvedId])
+      queryClient.setQueryData(['comments', resolvedId], {
+        comments: (previous?.comments ?? []).filter((c) => c.id !== commentId),
+        total: Math.max((previous?.total ?? 1) - 1, 0),
+      })
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(['comments', resolvedId], context.previous)
+    },
+    onSettled: () => {
+      setDeletingCommentId(null)
+      queryClient.invalidateQueries({ queryKey: ['comments', resolvedId] })
+    },
+  })
+
+  // ── Unlink doc ────────────────────────────────────────────────────────────
+  const unlinkMutation = useMutation({
+    mutationFn: (pageId: string) => deleteTaskLinkApi(resolvedId!, pageId),
+    onMutate: async (pageId) => {
+      await queryClient.cancelQueries({ queryKey: ['links', resolvedId] })
+      const previous = queryClient.getQueryData<TaskLink[]>(['links', resolvedId])
+      queryClient.setQueryData(['links', resolvedId], (previous ?? []).filter((l) => l.page_id !== pageId))
+      return { previous }
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previous) queryClient.setQueryData(['links', resolvedId], context.previous)
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['links', resolvedId] })
     },
   })
 
@@ -447,10 +795,10 @@ export default function TaskPanel() {
   }, [navigate, searchParams])
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') close() }
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && !showLinkModal) close() }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [close])
+  }, [close, showLinkModal])
 
   if (!taskIdParam) return null
 
@@ -463,11 +811,7 @@ export default function TaskPanel() {
         <div className="task-panel-topbar">
           <span className="task-panel-id">{task?.task_id ?? taskIdParam}</span>
           <div className="task-panel-spacer" />
-          <button
-            className="task-panel-icon-btn"
-            title="Open full page"
-            onClick={() => alert('Full page view — coming soon')}
-          >
+          <button className="task-panel-icon-btn" title="Open full page" onClick={() => alert('Full page view — coming soon')}>
             <ExternalLink size={14} />
           </button>
           <button className="task-panel-icon-btn" title="Close" onClick={close}>
@@ -503,7 +847,6 @@ export default function TaskPanel() {
 
             {/* Meta grid */}
             <div className="task-panel-meta">
-              {/* Status */}
               <span className="task-meta-label">Status</span>
               <div className="task-meta-value">
                 <StatusDropdown
@@ -514,7 +857,6 @@ export default function TaskPanel() {
                 />
               </div>
 
-              {/* Priority */}
               <span className="task-meta-label">Priority</span>
               <div className="task-meta-value">
                 <PriorityDropdown
@@ -524,7 +866,6 @@ export default function TaskPanel() {
                 />
               </div>
 
-              {/* Assignee */}
               <span className="task-meta-label">Assignee</span>
               <div className="task-meta-value">
                 <AssigneeDropdown
@@ -536,48 +877,30 @@ export default function TaskPanel() {
                 />
               </div>
 
-              {/* Type */}
               <span className="task-meta-label">Type</span>
               <div className="task-meta-value">
-                <span style={{
-                  fontSize: 12,
-                  color: 'var(--text-secondary)',
-                  fontFamily: 'var(--font)',
-                  textTransform: 'capitalize',
-                  paddingLeft: 8,
-                }}>
+                <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'var(--font)', textTransform: 'capitalize', paddingLeft: 8 }}>
                   {task.type ?? 'task'}
                 </span>
               </div>
 
-              {/* Due date */}
               {task.due_date && (
                 <>
                   <span className="task-meta-label">Due date</span>
                   <div className="task-meta-value">
-                    <span style={{
-                      fontSize: 12,
-                      color: 'var(--text-secondary)',
-                      fontFamily: 'var(--font)',
-                      paddingLeft: 8,
-                    }}>
-                      {new Date(task.due_date).toLocaleDateString('en-US', {
-                        month: 'short', day: 'numeric', year: 'numeric',
-                      })}
+                    <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'var(--font)', paddingLeft: 8 }}>
+                      {new Date(task.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                     </span>
                   </div>
                 </>
               )}
 
-              {/* Labels */}
               {task.labels.length > 0 && (
                 <>
                   <span className="task-meta-label">Labels</span>
                   <div className="task-meta-value" style={{ gap: 4, flexWrap: 'wrap' }}>
                     {task.labels.map((label) => (
-                      <span key={label.id} className="task-label-chip">
-                        {label.name}
-                      </span>
+                      <span key={label.id} className="task-label-chip">{label.name}</span>
                     ))}
                   </div>
                 </>
@@ -589,50 +912,73 @@ export default function TaskPanel() {
             {/* Description */}
             <div>
               <div className="tp-editor-header">
-                <span className="task-panel-section-label" style={{ marginBottom: 0 }}>
-                  Description
-                </span>
+                <span className="task-panel-section-label" style={{ marginBottom: 0 }}>Description</span>
                 {editor && (
                   <div className="tp-editor-toolbar">
-                    <button
-                      type="button"
-                      className={`tp-toolbar-btn${editor.isActive('bold') ? ' active' : ''}`}
-                      onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBold().run() }}
-                      title="Bold"
-                    >
-                      <strong>B</strong>
-                    </button>
-                    <button
-                      type="button"
-                      className={`tp-toolbar-btn${editor.isActive('italic') ? ' active' : ''}`}
-                      onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleItalic().run() }}
-                      title="Italic"
-                    >
-                      <em>I</em>
-                    </button>
-                    <button
-                      type="button"
-                      className={`tp-toolbar-btn${editor.isActive('bulletList') ? ' active' : ''}`}
-                      onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBulletList().run() }}
-                      title="Bullet list"
-                    >
-                      •–
-                    </button>
-                    <button
-                      type="button"
-                      className={`tp-toolbar-btn${editor.isActive('orderedList') ? ' active' : ''}`}
-                      onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleOrderedList().run() }}
-                      title="Numbered list"
-                    >
-                      1.
-                    </button>
-                    <span className="tp-editor-save-status">
-                      {descMutation.isPending ? 'Saving…' : descMutation.isSuccess ? 'Saved' : ''}
-                    </span>
+                    <button type="button" className={`tp-toolbar-btn${editor.isActive('bold') ? ' active' : ''}`} onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBold().run() }} title="Bold"><strong>B</strong></button>
+                    <button type="button" className={`tp-toolbar-btn${editor.isActive('italic') ? ' active' : ''}`} onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleItalic().run() }} title="Italic"><em>I</em></button>
+                    <button type="button" className={`tp-toolbar-btn${editor.isActive('bulletList') ? ' active' : ''}`} onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleBulletList().run() }} title="Bullet list">•–</button>
+                    <button type="button" className={`tp-toolbar-btn${editor.isActive('orderedList') ? ' active' : ''}`} onMouseDown={(e) => { e.preventDefault(); editor.chain().focus().toggleOrderedList().run() }} title="Numbered list">1.</button>
+                    <span className="tp-editor-save-status">{descMutation.isPending ? 'Saving…' : descMutation.isSuccess ? 'Saved' : ''}</span>
                   </div>
                 )}
               </div>
               <EditorContent editor={editor} className="tp-editor-wrap" />
+            </div>
+
+            <div className="task-panel-divider" />
+
+            {/* ── E7: Subtasks ──────────────────────────────────────────────── */}
+            <SubtasksSection
+              parentTaskId={resolvedId!}
+              slug={slug ?? ''}
+              projectId={task.project_id}
+              statuses={statuses}
+            />
+
+            <div className="task-panel-divider" />
+
+            {/* Linked Docs */}
+            <div>
+              <div className="tp-section-header">
+                <span className="task-panel-section-label" style={{ marginBottom: 0 }}>
+                  Linked Docs {links.length > 0 && `(${links.length})`}
+                </span>
+                <button
+                  className="tp-section-add-btn"
+                  onClick={() => setShowLinkModal(true)}
+                  title="Link a document"
+                >
+                  <Link2 size={12} />
+                  Link doc
+                </button>
+              </div>
+
+              {links.length > 0 && (
+                <div className="tp-links-list">
+                  {links.map((link) => (
+                    <div key={link.page_id} className="tp-link-item">
+                      <FileText size={13} className="tp-link-icon" />
+                      <div className="tp-link-info">
+                        <span className="tp-link-title">{link.page_title}</span>
+                        <span className="tp-link-space">{link.space_name}</span>
+                      </div>
+                      <button
+                        className="tp-link-remove-btn"
+                        title="Remove link"
+                        onClick={() => unlinkMutation.mutate(link.page_id)}
+                        disabled={unlinkMutation.isPending}
+                      >
+                        <X size={11} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {links.length === 0 && (
+                <div className="tp-links-empty">No linked documents</div>
+              )}
             </div>
 
             <div className="task-panel-divider" />
@@ -643,28 +989,42 @@ export default function TaskPanel() {
                 Comments {comments.length > 0 && `(${comments.length})`}
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-3)', marginBottom: 'var(--space-4)' }}>
-                {comments.map((c) => (
-                  <div key={c.id} className="task-comment">
-                    <div className="avatar avatar-xs">
-                      {getInitials(c.author.display_name)}
-                    </div>
-                    <div className="task-comment-body">
-                      <div className="task-comment-header">
-                        <span className="task-comment-author">{c.author.display_name}</span>
-                        <span className="task-comment-time">
-                          {new Date(c.created_at).toLocaleDateString('en-US', {
-                            month: 'short', day: 'numeric',
-                          })}
-                        </span>
+              {comments.length > 0 && (
+                <div className="tp-comments-list">
+                  {comments.map((c) => {
+                    const isOwn = c.author_id === user?.id
+                    const isDeleting = deletingCommentId === c.id
+                    const isOptimistic = c.id.startsWith('optimistic-')
+                    return (
+                      <div key={c.id} className={`task-comment${isOptimistic ? ' task-comment--optimistic' : ''}`}>
+                        <div className="avatar avatar-xs">{getInitials(c.author.display_name)}</div>
+                        <div className="task-comment-body">
+                          <div className="task-comment-header">
+                            <span className="task-comment-author">{c.author.display_name}</span>
+                            <span className="task-comment-time">
+                              {new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </span>
+                            <div className="task-comment-actions">
+                              {isOwn && !isOptimistic && (
+                                <button
+                                  className="task-comment-delete-btn"
+                                  title="Delete comment"
+                                  disabled={isDeleting}
+                                  onClick={() => deleteCommentMutation.mutate(c.id)}
+                                >
+                                  <Trash2 size={11} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                          <div className="task-comment-text">{extractCommentText(c.body_json)}</div>
+                        </div>
                       </div>
-                      <div className="task-comment-text">{c.content}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    )
+                  })}
+                </div>
+              )}
 
-              {/* Comment input */}
               <div className="task-comment-input-row">
                 {user && (
                   <div className="avatar avatar-xs" style={{ marginTop: 3 }}>
@@ -672,13 +1032,15 @@ export default function TaskPanel() {
                   </div>
                 )}
                 <textarea
+                  ref={commentInputRef}
                   className="task-comment-input"
-                  placeholder="Add a comment…"
+                  placeholder="Add a comment… (Cmd+Enter to submit)"
                   value={comment}
                   onChange={(e) => setComment(e.target.value)}
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                      if (comment.trim()) commentMutation.mutate()
+                      e.preventDefault()
+                      if (comment.trim() && !commentMutation.isPending) commentMutation.mutate()
                     }
                   }}
                   rows={1}
@@ -693,36 +1055,178 @@ export default function TaskPanel() {
                 </button>
               </div>
             </div>
+
+            <div className="task-panel-divider" />
+
+            {/* Activity */}
+            <ActivitySection taskId={resolvedId!} statuses={statuses} slug={slug ?? ''} />
           </div>
         )}
       </div>
+
+      {showLinkModal && resolvedId && (
+        <LinkDocModal
+          slug={slug ?? ''}
+          taskId={resolvedId}
+          existingPageIds={links.map((l) => l.page_id)}
+          onClose={() => setShowLinkModal(false)}
+          onLinked={() => queryClient.invalidateQueries({ queryKey: ['links', resolvedId] })}
+        />
+      )}
     </>
   )
 }
 
-// ── Hook: resolve "APP-1" → uuid ──────────────────────────────────────────────
-import { useMemo } from 'react'
+// ── ActivitySection ───────────────────────────────────────────────────────────
 
-function useResolveTaskId(
-  taskIdParam: string | null,
-  slug: string | undefined
-): string | null {
+import { getActivityApi } from '@/api/endpoints/activity'
+
+interface ActivityEntry {
+  id: string
+  actor: { display_name: string }
+  action: string
+  field_name: string | null
+  old_value: unknown
+  new_value: unknown
+  created_at: string
+}
+
+function ActivitySection({
+  taskId,
+  statuses,
+  slug,
+}: {
+  taskId: string
+  statuses: TaskStatus[]
+  slug: string
+}) {
+  const { data } = useQuery({
+    queryKey: ['activity', taskId],
+    queryFn: () => getActivityApi(taskId),
+    enabled: !!taskId,
+    staleTime: 30_000,
+  })
+
+  const { data: membersData } = useQuery({
+    queryKey: ['members', slug],
+    queryFn: () => getOrgMembersApi(slug),
+    enabled: !!slug,
+    staleTime: 60_000,
+  })
+  const members = Array.isArray(membersData?.members) ? membersData.members : []
+
+  const entries: ActivityEntry[] = data?.activities ?? []
+
+  if (entries.length === 0) return null
+
+  return (
+    <div>
+      <div className="task-panel-section-label">Activity</div>
+      <div className="tp-activity-list">
+        {entries.map((entry) => (
+          <div key={entry.id} className="tp-activity-item">
+            <div className="avatar avatar-xs" style={{ flexShrink: 0 }}>
+              {getInitials(entry.actor.display_name)}
+            </div>
+            <div className="tp-activity-content">
+              <span className="tp-activity-actor">{entry.actor.display_name}</span>
+              {' '}
+              <span className="tp-activity-text">
+                {formatActivity(entry, statuses, members)}
+              </span>
+              <div className="tp-activity-time">
+                {new Date(entry.created_at).toLocaleDateString('en-US', {
+                  month: 'short', day: 'numeric',
+                })}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function formatActivity(
+  entry: ActivityEntry,
+  statuses: TaskStatus[],
+  members: import('@/types').OrgMember[]
+): string {
+  const action = entry.action
+
+  if (action === 'TASK_CREATED') {
+    const nv = entry.new_value as Record<string, unknown> | null
+    const title = nv?.title ? `"${String(nv.title)}"` : 'this task'
+    return `created task ${title}`
+  }
+
+  if (action === 'FIELD_UPDATED') {
+    const nv = entry.new_value as Record<string, unknown> | null
+    const ov = entry.old_value as Record<string, unknown> | null
+    if (!nv) return 'updated this task'
+
+    const field = Object.keys(nv)[0]
+    if (!field) return 'updated this task'
+
+    const newRaw = nv[field]
+    const oldRaw = ov?.[field]
+
+    const fieldLabels: Record<string, string> = {
+      priority:    'priority',
+      status_id:   'status',
+      assignee_id: 'assignee',
+      title:       'title',
+      sprint_id:   'sprint',
+      due_date:    'due date',
+      type:        'type',
+    }
+    const fieldLabel = fieldLabels[field] ?? field.replace(/_/g, ' ')
+
+    // Resolve UUIDs to human-readable names
+    const resolve = (val: unknown): string => {
+      if (val === null || val === undefined) return 'none'
+      const str = String(val)
+      if (field === 'status_id') {
+        const found = statuses.find((s) => s.id === str)
+        return found ? found.name : str
+      }
+      if (field === 'assignee_id') {
+        const found = members.find((m) => m.user_id === str)
+        return found ? found.display_name : str
+      }
+      return str
+    }
+
+    const newVal = resolve(newRaw)
+    const oldVal = oldRaw !== undefined ? resolve(oldRaw) : null
+
+    if (oldVal && oldVal !== 'none') {
+      return `changed ${fieldLabel} from "${oldVal}" to "${newVal}"`
+    }
+    return `set ${fieldLabel} to "${newVal}"`
+  }
+
+  if (action === 'COMMENT_ADDED') return 'added a comment'
+  if (action === 'LINK_ADDED')    return 'linked a document'
+  if (action === 'LINK_REMOVED')  return 'removed a linked document'
+
+  return action.toLowerCase().replace(/_/g, ' ')
+}
+// ── Hook: resolve "APP-1" → uuid ──────────────────────────────────────────────
+
+function useResolveTaskId(taskIdParam: string | null, slug: string | undefined): string | null {
   const queryClient = useQueryClient()
 
   return useMemo(() => {
     if (!taskIdParam) return null
 
-    // Search board cache
-    const boardQueries = queryClient.getQueriesData<{ tasks: import('@/types').Task[] }>({
-      queryKey: ['board', slug],
-    })
+    const boardQueries = queryClient.getQueriesData<{ tasks: Task[] }>({ queryKey: ['board', slug] })
     for (const [, data] of boardQueries) {
       if (!data?.tasks) continue
       const found = data.tasks.find((t) => t.task_id === taskIdParam)
       if (found) return found.id
     }
 
-    // Match by number extracted from task_id (e.g. "APP-2" → 2)
     const numMatch = taskIdParam.match(/-(\d+)$/)
     if (numMatch) {
       const num = parseInt(numMatch[1], 10)
@@ -733,19 +1237,13 @@ function useResolveTaskId(
       }
     }
 
-    // Search backlog cache
-    const backlogQueries = queryClient.getQueriesData<{ tasks: import('@/types').Task[] }>({
-      queryKey: ['backlog-tasks', slug],
-    })
+    const backlogQueries = queryClient.getQueriesData<{ tasks: Task[] }>({ queryKey: ['backlog-tasks', slug] })
     for (const [, data] of backlogQueries) {
       if (!data?.tasks) continue
-      const found = data.tasks.find(
-        (t) => t.task_id === taskIdParam || t.number === Number(numMatch?.[1])
-      )
+      const found = data.tasks.find((t) => t.task_id === taskIdParam || t.number === Number(numMatch?.[1]))
       if (found) return found.id
     }
 
-    // Already a UUID — use directly
     const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
     if (uuidRe.test(taskIdParam)) return taskIdParam
 

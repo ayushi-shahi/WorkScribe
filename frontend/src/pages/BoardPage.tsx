@@ -194,10 +194,12 @@ export default function BoardPage() {
   // ── Filtering ──────────────────────────────────────────────────────────────
 
   const rawTasks: Task[] = taskData?.tasks ?? []
-  const allTasks: Task[] = rawTasks.map((t) => ({
-    ...t,
-    task_id: t.task_id || (project ? `${project.key}-${t.number}` : t.task_id),
-  }))
+  const allTasks: Task[] = rawTasks
+    .filter((t) => t.type !== 'subtask')
+    .map((t) => ({
+      ...t,
+      task_id: t.task_id || (project ? `${project.key}-${t.number}` : t.task_id),
+    }))
   
   const filteredTasks = useMemo(() => {
     return allTasks.filter((task) => {
