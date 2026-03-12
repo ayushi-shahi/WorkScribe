@@ -3,18 +3,22 @@ import { useQuery } from '@tanstack/react-query'
 import { getOrgApi } from '@/api/endpoints/organizations'
 import { getMeApi } from '@/api/endpoints/auth'
 import { useAuthStore } from '@/stores/authStore'
+import { useWebSocket } from '@/hooks/useWebSocket'
 import Sidebar from '@/components/layout/Sidebar'
 import Topbar from '@/components/layout/Topbar'
 import TaskPanel from '@/components/panel/TaskPanel'
+import CommandPalette from '@/components/CommandPalette'
 import '@/styles/layout.css'
 
 export default function OrgLayout() {
-  const { slug } = useParams<{ slug: string }>()
-  const user = useAuthStore((s) => s.user)
-  const setAuth = useAuthStore((s) => s.setAuth)
-  const accessToken = useAuthStore((s) => s.accessToken)
+  const { slug }        = useParams<{ slug: string }>()
+  const user            = useAuthStore((s) => s.user)
+  const setAuth         = useAuthStore((s) => s.setAuth)
+  const accessToken     = useAuthStore((s) => s.accessToken)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
-  // Restore user after page reload (access token refreshed but user not re-fetched)
+  useWebSocket(isAuthenticated)
+
   useQuery({
     queryKey: ['me'],
     queryFn: async () => {
@@ -63,6 +67,7 @@ export default function OrgLayout() {
         <Outlet />
       </main>
       <TaskPanel />
+      <CommandPalette />
     </div>
   )
 }

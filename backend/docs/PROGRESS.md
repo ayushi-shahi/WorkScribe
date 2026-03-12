@@ -1,7 +1,8 @@
+
 # WorkScribe — Backend Progress
 
-**Last Updated:** 2026-03-11
-**Latest Commit:** `feat: gaps 1-5 — pagination, backlog, wiki guards, sprint task assignment`
+**Last Updated:** 2026-03-12
+**Latest Commit:** `feat: wiki G4–G6 — Tiptap editor, autosave, save button, new space/page`
 **Alembic Head:** `d4e5f6a1b2c3` (create_notifications_table)
 **API:** `http://localhost:8001`
 
@@ -27,7 +28,7 @@
 | 8.1   | Google OAuth                | ✅ Complete & Tested |
 | —    | API Hardening — Gaps 1–5  | ✅ Complete & Tested |
 
-**Backend: 100% complete. Next phase: Frontend.**
+**Backend: 100% complete. Frontend: G6 complete — next: H1 (WebSocket hook).**
 
 ---
 
@@ -248,10 +249,6 @@
 
 ## Phase 5.2 — Performance (Redis Caching) ✅
 
-### Overview
-
-Redis caching added to the two most expensive read endpoints.
-
 ### Caching Strategy
 
 **Board (task list):**
@@ -465,19 +462,6 @@ Replaced the `PATCH /tasks/{id}` workaround with proper dedicated endpoints.
 * Validates task belongs to same project as sprint
 * Invalidates board cache on both operations
 
-### Modified Files (Gaps 1–5)
-
-| File                               | Changes                                                                                                                                                          |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `app/schemas/task.py`            | Added `BacklogListResponse`; added `skip`,`limit`to `CommentListResponse`,`ActivityListResponse`                                                       |
-| `app/schemas/wiki.py`            | Added `skip`,`limit`to `WikiSpaceListResponse`                                                                                                             |
-| `app/services/task_service.py`   | Added `list_backlog`; updated `list_comments`,`list_activity`with pagination                                                                               |
-| `app/services/wiki_service.py`   | Updated `list_spaces`with pagination; added page count guard to `delete_space`; added `_get_child_count`helper; updated `delete_page`with `force`param |
-| `app/services/sprint_service.py` | Added `add_task_to_sprint`,`remove_task_from_sprint`,`_get_task_in_sprint_project`; added `_board_cache_key`,`_invalidate_board_cache`module helpers   |
-| `app/routers/tasks.py`           | Added backlog endpoint; added `skip/limit`Query params to comments + activity endpoints; imported `BacklogListResponse`                                      |
-| `app/routers/pages.py`           | Added `skip/limit`Query params to `list_spaces`; added `force: bool = Query(default=False)`to `delete_page`                                              |
-| `app/routers/sprints.py`         | Added `SprintTaskRequest`body schema; added `POST /sprints/{id}/tasks`; added `DELETE /sprints/{id}/tasks/{task_id}`                                       |
-
 ---
 
 ## Database Migration Chain
@@ -568,7 +552,7 @@ Replaced the `PATCH /tasks/{id}` workaround with proper dedicated endpoints.
 
 # Frontend Progress
 
-Last Updated: 2026-03-11
+Last Updated: 2026-03-12
 Backend: 100% complete
 Frontend location: /frontend
 Dev server: http://localhost:5173
@@ -613,13 +597,13 @@ Backend API: http://localhost:8001/api/v1
 | F3     | Drag backlog ↔ sprint                                            | ✅ Done |
 | F4     | Create Sprint modal                                               | ✅ Done |
 | F5     | Start/Complete Sprint modals                                      | ✅ Done |
-| G1     | WikiLayout                                                        | ⬜ Next |
-| G2     | PageTree                                                          | ⬜      |
-| G3     | PageEditorPage shell                                              | ⬜      |
-| G4     | Tiptap editor full                                                | ⬜      |
-| G5     | Autosave + Save button                                            | ⬜      |
-| G6     | New Space + New Page                                              | ⬜      |
-| H1     | useWebSocket hook                                                 | ⬜      |
+| G1     | WikiLayout (3-column shell, spaces list, NewSpaceModal)           | ✅ Done |
+| G2     | PageTree (recursive dnd-kit tree, options menu, inline create)    | ✅ Done |
+| G3     | PageEditorPage shell (breadcrumb, editable title, meta row)       | ✅ Done |
+| G4     | Tiptap editor full                                                | ✅ Done |
+| G5     | Autosave + Save button + unsaved indicator                        | ✅ Done |
+| G6     | New Space + New Page wired end-to-end                             | ✅ Done |
+| H1     | useWebSocket hook                                                 | ⬜ Next |
 | H2     | Notification bell + panel                                         | ⬜      |
 | H3     | CommandPalette (Cmd+K)                                            | ⬜      |
 | I1     | DashboardPage                                                     | ⬜      |
@@ -713,12 +697,10 @@ Backend API: http://localhost:8001/api/v1
 
 * New file: `src/api/endpoints/links.ts` — getTaskLinksApi, createTaskLinkApi, deleteTaskLinkApi
 * New file: `src/api/endpoints/activity.ts` — getActivityApi, ActivityEntry, ActivityListResponse
-* New file: `src/api/endpoints/search.ts` — searchApi (already existed)
 * Backend returns `{ data: [], total: 0 }` for links — unwrapped as `res.data.data ?? []`
 * LinkDocModal: fixed-position modal with page search (debounced 300ms), filters already-linked pages
 * Search requires ≥1 character; uses searchApi with type='page'
 * Unlink: optimistic removal with rollback, X button visible on hover
-* Link search will return empty until wiki pages (G1+) are created — expected behavior
 * Escape closes modal; modal overlay click also closes
 * CSS: .tp-section-header, .tp-links-list, .tp-link-item, .tp-link-modal, etc. appended to taskPanel.css
 
@@ -727,17 +709,11 @@ Backend API: http://localhost:8001/api/v1
 * `getSubtasksApi(slug, projectId, parentTaskId)` — fetches with `type=subtask` filter, then client-side filters by `parent_task_id` (backend ignores `parent_task_id` as query param)
 * `parent_task_id: string | null` added to `Task` interface in `src/types/index.ts`
 * `SubtasksSection` component in `TaskPanel.tsx` — props: `{ parentTaskId, slug, projectId, statuses }`
-* Placed between Description and Linked Docs sections in task panel
 * Shows `SUBTASKS (done/total)` count in header + thin green progress bar
-* `doneCount` checks both `task.status?.category === 'done'` AND `task.status_id === doneStatusId` — list responses don't embed `status` object, only `status_id`
-* Each row: checkbox (Square/CheckSquare from lucide-react), task_id (mono), title, assignee avatar
+* `doneCount` checks both `task.status?.category === 'done'` AND `task.status_id === doneStatusId`
 * Toggle done: optimistic update sets both `status_id` and `status` object; rollback on error
-* `isDone` in row render also checks both `status?.category` and `status_id` for same reason
-* "Add subtask" button → inline input row; Enter creates, Escape cancels
-* Creates with `type: 'subtask'`, `parent_task_id`, `status_id: todoStatus?.id`
-* Subtasks hidden from board (BoardPage) and backlog (BacklogPage) via `.filter((t) => t.type !== 'subtask')`
+* Subtasks hidden from board and backlog via `.filter((t) => t.type !== 'subtask')`
 * Query key: `['subtasks', parentTaskId]`
-* CSS appended to taskPanel.css: `.tp-subtasks-progress`, `.tp-subtask-row`, `.tp-subtask-check`, `.tp-subtask-input-row`, etc.
 
 #### F1 — BacklogPage
 
@@ -766,11 +742,9 @@ Backend API: http://localhost:8001/api/v1
 * Each section body is DroppableSectionBody (useDroppable + SortableContext combined)
 * Each row wrapped in SortableBacklogRow (useSortable, opacity 0.4 while dragging)
 * Section IDs: sprint:{sprintId} or backlog
-* Cross-section drag: calls addTaskToSprintApi (POST /sprints/{id}/tasks) or removeTaskFromSprintApi (DELETE /sprints/{id}/tasks/{taskId}) with optimistic update + rollback on error
+* Cross-section drag: calls addTaskToSprintApi or removeTaskFromSprintApi with optimistic update + rollback
 * Same-section drag: calls bulkUpdatePositionsApi, optimistic reorder
 * DragOverlay ghost card with slight rotation
-* Both api functions added to src/api/endpoints/tasks.ts
-* Drag-over highlight: .bl-section-body--over (dashed brand border)
 
 #### F4 — Create Sprint Modal
 
@@ -779,26 +753,82 @@ Backend API: http://localhost:8001/api/v1
 * Validation: name required, end date must be after start date
 * API: createSprintApi → POST /organizations/{slug}/projects/{id}/sprints
 * On success: invalidates ['sprints', slug, projectId], toast, closes modal
-* "New Sprint" button added to BacklogPage header (.bl-header-actions slot)
-* Escape + overlay click close; focus traps to name input on mount
-* New interfaces: CreateSprintRequest, SprintResponse added to tasks.ts
 
 #### F5 — Start/Complete Sprint Modals
 
 * src/components/backlog/StartSprintModal.tsx — shows sprint info + task count, confirms start
 * src/components/backlog/CompleteSprintModal.tsx — shows incomplete task count, radio options: move to backlog or to a specific planned sprint
-* SprintSection updated with plannedSprints prop; Start/Complete buttons in section header (e.stopPropagation() to prevent collapse)
 * startSprintApi → POST /sprints/{id}/start; completeSprintApi → POST /sprints/{id}/complete with body { move_incomplete_to?: string }
 * On success: invalidates ['sprints', slug], ['backlog', slug], ['backlog-tasks', slug], ['board', slug]
 * Backend returns 409 if another sprint already active — shown as error toast
-* Completed sprint disappears from list (filtered to status !== 'completed')
 
-#### Board Task Panel Fix
+#### G1 — WikiLayout ✅
 
-* Root cause: getTasksApi list responses don't include task_id; useResolveTaskId searched board cache by t.task_id — always missed
-* Fix 1 (BoardPage.tsx): raw tasks mapped to add task_id: t.task_id || `${project.key}-${t.number}` at render time
-* Fix 2 (useResolveTaskId): searches board cache by task_id string, falls back to number parsed from param (APP-2 → 2), then searches backlog cache (['backlog-tasks', slug]), then falls back to UUID passthrough
-* Uses useMemo; hooks kept before all conditional returns
+* 3-column shell: Col 1 (200px) spaces list, Col 2 (240px) page tree, Col 3 (flex: 1) editor via `<Outlet>`
+* `wiki:new-space` and `wiki:new-page` custom events fired on `window` for decoupled triggering
+* WikiLayout reads `:spaceId` from `useParams`; passes `{ spaces, pageTree, activeSpace }` to children via `useOutletContext`
+* Sidebar wiki links point to `/org/:slug/wiki/:spaceId`
+* `NewSpaceModal` — emoji + name fields; `nameToKey()` auto-derives `key` (uppercase, alphanumeric, max 10 chars); POST to backend
+* Route structure: `/org/:slug/wiki` → index (WikiHomePage), `/org/:slug/wiki/:spaceId` → WikiHomePage (space context), `/org/:slug/wiki/:spaceId/:pageId` → PageEditorPage
+
+#### G2 — PageTree ✅
+
+* Recursive tree with single `DndContext` at root, `SortableContext` per level
+* `DragOverlay` ghost with `rotate(1.5deg)`
+* Each row: chevron, FileText icon, NavLink title, `···` options button
+* Options menu: Rename / New child page / Delete (guards against deleting pages that have children)
+* `menuOpen` state drives `.wiki-tree-item-row--menu-open` class (avoids CSS `:has()` for broader compatibility)
+* Active route highlighted via NavLink `active` class + brand left border
+
+#### G3 — PageEditorPage Shell ✅
+
+* Breadcrumb — `Space name › Page title`; space name is a clickable link back to the space root
+* Editable title — `<textarea>` that auto-resizes; 800ms debounced save while typing + immediate save on blur
+* Meta row — avatar + "Edited X ago" via `date-fns formatDistanceToNow`; save indicator inline
+* Editor mount area — `id="wiki-editor-mount"` div; G4 mounts Tiptap here
+
+#### G4 — Tiptap Wiki Editor ✅
+
+* New file: `src/components/wiki/WikiEditor.tsx`
+* Packages added: `@tiptap/extension-underline`, `@tiptap/extension-link`, `@tiptap/extension-table`, `@tiptap/extension-table-row`, `@tiptap/extension-table-cell`, `@tiptap/extension-table-header`
+* All 4 table packages use named imports `{ Table }` not default imports — required for this version
+* Extensions: StarterKit (H1/H2/H3, bold, italic, strike, code, codeBlock, blockquote, lists, hr), Underline, Link, Table+Row+Header+Cell, Placeholder
+* Toolbar: Undo/Redo · H1/H2/H3 · Bold/Italic/Underline/Strike/InlineCode · BulletList/OrderedList/Blockquote/CodeBlock · Link (popover) · Table · Divider
+* Link popover: inline input, Apply button, Remove button (shown when link already set)
+* Slash command menu: triggered by typing `/` on an empty line; 9 commands; arrow key navigation + Enter to select + Esc to close; filters by typed query
+* Slash detection via `editor.view.dom` keydown listener guarded by `editor.isEditable` + try/catch to avoid "view not mounted" crash
+* Table imports must be named `{ Table }` etc. — default imports throw SyntaxError in Vite
+* `WikiEditorHandle` ref interface: `getJSON()`, `isEmpty()`, `focus()` — exposed via `forwardRef` + `useImperativeHandle`
+* localStorage draft: `page:{pageId}` — loaded on mount (draft > server content), saved on every keystroke, cleared on successful API save
+* `onChange` callback fires on every editor update with full Tiptap JSON
+* Page navigation: `useEffect` on `pageId` change reloads content and resets slash/link state
+* `onReady` callback fires once after editor mounts — available for G5 integration
+
+#### G5 — Autosave + Save Button + Unsaved Indicator ✅
+
+* Manual **Save button** in meta row — grey/disabled when clean, **amber highlighted** when unsaved changes exist
+* **Cmd/Ctrl+S** keyboard shortcut saves immediately, cancels pending debounce timer
+* **Tab title** changes to `• WorkScribe` when dirty, resets to `WorkScribe` on save or page navigation
+* **1500ms debounced autosave** on every editor change via `handleEditorChange` callback
+* `isDirty` state: set true on editor change, false on successful save
+* `isSaving` state: set true when mutation fires, false on success/error
+* `savedFlash` state: true for 2500ms after successful save → shows "Saved" indicator
+* On save success: `clearDraft(pageId)` removes localStorage draft, invalidates `['page', pageId]`
+* Dirty state + save indicator reset when navigating to a different page (`pageId` changes)
+* `contentMutation` keeps `isDirty=true` on error so user can retry
+* CSS: `.wiki-save-btn` (base), `.wiki-save-btn--dirty` (amber), `.wiki-page-save-indicator--saved` (green, no pulse)
+
+#### G6 — New Space + New Page ✅
+
+* Sidebar `+` button next to "Wiki" now fires `window.dispatchEvent(new CustomEvent('wiki:new-space'))` in addition to navigating to `/wiki` — previously just navigated
+* `wiki:new-space` event already listened for in `WikiLayout` and opens `NewSpaceModal`
+* `NewSpaceModal` in `WikiLayout`: emoji + name fields, auto-derives key via `nameToKey()`, POST to backend, navigates to new space on success
+* `+` button in tree header (`WikiLayout`) sets `newPageParent = null` → shows `InlineNewPage` at root level
+* `InlineNewPage` component: Enter to confirm, Escape/blur-with-empty to cancel, disabled during loading
+* `createPageMutation` on confirm: POST `/wiki/spaces/{id}/pages`, invalidates `['page-tree', spaceId]`, navigates to new page
+* Child page creation via `···` options menu → "New child page" → sets `newPageParent = node.id`
+* Rename via `RenamePageModal` triggered from options menu
+* Delete guards: if page has children, shows toast error; otherwise `confirm()` dialog before DELETE
 
 ---
 
@@ -810,18 +840,13 @@ frontend/src/
 │   ├── client.ts                  ✅ Axios + silent refresh interceptor
 │   └── endpoints/
 │       ├── auth.ts                ✅
-│       ├── organizations.ts       ✅ getOrgMembersApi returns { members, total }
-│       ├── projects.ts            ✅ getProjects, getProject, createProject, getStatuses
-│       ├── tasks.ts               ✅ getTasksApi, getBacklogApi, getTaskApi, createTaskApi,
-│       │                             updateTaskApi, deleteTaskApi, moveTaskApi,
-│       │                             bulkUpdatePositionsApi, getSprintsApi, getLabelsApi,
-│       │                             addTaskToSprintApi, removeTaskFromSprintApi,
-│       │                             createSprintApi, startSprintApi, completeSprintApi,
-│       │                             getSubtasksApi
-│       ├── comments.ts            ✅ getCommentsApi, createCommentApi, deleteCommentApi
-│       ├── links.ts               ✅ getTaskLinksApi, createTaskLinkApi, deleteTaskLinkApi
-│       ├── activity.ts            ✅ getActivityApi
-│       ├── search.ts              ✅ searchApi
+│       ├── organizations.ts       ✅
+│       ├── projects.ts            ✅
+│       ├── tasks.ts               ✅
+│       ├── comments.ts            ✅
+│       ├── links.ts               ✅
+│       ├── activity.ts            ✅
+│       ├── search.ts              ✅
 │       └── wiki.ts                ✅
 ├── stores/
 │   ├── authStore.ts               ✅
@@ -829,7 +854,7 @@ frontend/src/
 ├── hooks/
 │   └── useBoardDnd.ts             ✅
 ├── lib/
-│   └── taskHelpers.ts             ✅ groupTasksByStatus, priorityColor, statusColor, getInitials
+│   └── taskHelpers.ts             ✅
 ├── styles/
 │   ├── tokens.css                 ✅
 │   ├── globals.css                ✅
@@ -837,10 +862,11 @@ frontend/src/
 │   ├── wizard.css                 ✅
 │   ├── layout.css                 ✅
 │   ├── board.css                  ✅
-│   ├── taskPanel.css              ✅ + E2 dropdowns + E3 Tiptap + E4 comments + E6 linked docs + E7 subtasks
-│   └── backlog.css                ✅ + F3 dnd + F4 modal + F5 sprint actions
+│   ├── taskPanel.css              ✅
+│   ├── backlog.css                ✅
+│   └── wiki.css                   ✅ G1–G6 complete
 ├── types/
-│   └── index.ts                   ✅ All TypeScript interfaces (incl. Comment, TaskLink, parent_task_id on Task)
+│   └── index.ts                   ✅
 ├── pages/
 │   ├── LoginPage.tsx              ✅
 │   ├── RegisterPage.tsx           ✅
@@ -849,19 +875,20 @@ frontend/src/
 │   ├── OrgCreatePage.tsx          ✅
 │   ├── AcceptInvitePage.tsx       ✅
 │   ├── DashboardPage.tsx          ⬜ stub
-│   ├── BoardPage.tsx              ✅ DnD + sprint filter + filter toolbar + CreateTaskModal + task_id enrichment + subtask filter
-│   ├── BacklogPage.tsx            ✅ dnd-kit + Sprint sections + Create/Start/Complete sprint modals + subtask filter
-│   ├── WikiHomePage.tsx           ⬜ stub
-│   ├── PageEditorPage.tsx         ⬜ stub
+│   ├── BoardPage.tsx              ✅
+│   ├── BacklogPage.tsx            ✅
+│   ├── WikiHomePage.tsx           ✅
+│   ├── PageEditorPage.tsx         ✅ G3+G4+G5 complete
 │   ├── OrgSettingsPage.tsx        ⬜ stub
 │   ├── MembersPage.tsx            ⬜ stub
 │   └── NotFoundPage.tsx           ✅
 ├── layouts/
-│   └── OrgLayout.tsx              ✅ Full layout with TaskPanel mounted
+│   ├── OrgLayout.tsx              ✅
+│   └── WikiLayout.tsx             ✅ G1+G2+G6 complete
 ├── components/
 │   ├── ProtectedRoute.tsx         ✅
 │   ├── layout/
-│   │   ├── Sidebar.tsx            ✅
+│   │   ├── Sidebar.tsx            ✅ G6: wiki + button fires wiki:new-space event
 │   │   └── Topbar.tsx             ✅
 │   ├── board/
 │   │   ├── TaskCard.tsx           ✅
@@ -869,10 +896,13 @@ frontend/src/
 │   │   ├── BoardColumn.tsx        ✅
 │   │   └── CreateTaskModal.tsx    ✅
 │   ├── backlog/
-│   │   ├── BacklogTaskRow.tsx     ✅ F2
-│   │   ├── CreateSprintModal.tsx  ✅ F4
-│   │   ├── StartSprintModal.tsx   ✅ F5
-│   │   └── CompleteSprintModal.tsx ✅ F5
+│   │   ├── BacklogTaskRow.tsx     ✅
+│   │   ├── CreateSprintModal.tsx  ✅
+│   │   ├── StartSprintModal.tsx   ✅
+│   │   └── CompleteSprintModal.tsx ✅
+│   ├── wiki/
+│   │   ├── PageTree.tsx           ✅ G2+G6 complete
+│   │   └── WikiEditor.tsx         ✅ G4 complete
 │   └── panel/
 │       └── TaskPanel.tsx          ✅ E2–E7 complete
 └── App.tsx                        ✅
@@ -894,7 +924,7 @@ frontend/src/
 * getOrgMembersApi returns { members, total } object — always unwrap with Array.isArray guard
 * Board query cache prefix ['board', slug] used for invalidation — catches all sprint variants
 * task.status may be undefined on list responses — always use optional chain task.status?.category
-* task.status_id is always present on list responses — use as fallback when status object absent (critical for subtask doneCount and toggle)
+* task.status_id is always present on list responses — use as fallback when status object absent
 * statusColor exists in taskHelpers.ts; local categoryColor() used inside CreateTaskModal
 * showAllTasks defaults to true on BoardPage so tasks without sprint are always visible
 * Backlog page uses two separate queries: all tasks (for sprint grouping) + pure backlog tasks
@@ -904,17 +934,24 @@ frontend/src/
 * Description autosave: localStorage draft keyed task-desc-draft:{resolvedId}, 1500ms debounce to API, draft cleared on successful save
 * Hooks must never be called after conditional returns (guards kept after all hooks)
 * useMemo used for useResolveTaskId to avoid re-computation on every render
-* Slug availability check hits GET /organizations/{slug} — 404 = available
 * Comments use body_json (Tiptap JSON) for both send and receive — never plain content string
-* isOwn for comments uses c.author_id (top-level) not c.author.id (nested) for reliability
-* Optimistic comment shape must match full Comment interface including author_id field
-* Activity log: action is uppercase (`FIELD_UPDATED`, `TASK_CREATED`); old_value/new_value are objects keyed by field name; UUIDs resolved to names via statuses array + members query
+* isOwn for comments uses c.author_id (top-level) not c.author.id (nested)
+* Activity log: action is uppercase; old_value/new_value are objects keyed by field name; UUIDs resolved to names
 * Links API returns { data: [], total: 0 } — unwrap as res.data.data ?? []
-* Link search modal requires ≥1 character typed; filters already-linked pages from results
-* Wiki page linking works end-to-end but search returns empty until G1+ wiki pages are created
-* Subtask filtering: client-side by parent_task_id after fetching type=subtask (backend ignores parent_task_id query param)
+* Subtask filtering: client-side by parent_task_id after fetching type=subtask
 * Subtasks hidden from board and backlog via .filter((t) => t.type !== 'subtask') at render time
-* Subtask toggle done: always check both task.status?.category AND task.status_id === doneStatus.id
+* WikiLayout passes context via useOutletContext — children receive { spaces, pageTree, activeSpace }
+* Wiki custom events (wiki:new-space, wiki:new-page) fired on window for decoupled modal triggering
+* nameToKey() in NewSpaceModal: uppercase, strip non-alphanumeric, max 10 chars
+* PageTree uses menuOpen state + CSS class instead of :has() for options menu visibility
+* PageEditorPage title textarea auto-resizes; 800ms debounce to API + immediate save on blur
+* date-fns formatDistanceToNow used for "Edited X ago" in meta row
+* WikiEditor mounts into id="wiki-editor-mount" div in PageEditorPage
+* Wiki localStorage draft key: page:{pageId} (mirrors task-desc-draft:{resolvedId} pattern)
+* Tiptap table extensions (@tiptap/extension-table etc.) must use named imports { Table } not default imports — default imports throw SyntaxError in Vite due to no default export
+* WikiEditor slash command menu triggered by '/' on empty line; detected via editor.view.dom keydown listener guarded by editor.isEditable + try/catch to avoid "view not mounted" crash
+* Wiki Save button: amber when dirty (isDirty=true), grey/disabled when clean; Cmd/Ctrl+S triggers immediate save
+* Tab title: '• WorkScribe' when unsaved changes exist, resets to 'WorkScribe' on save
 
 ---
 

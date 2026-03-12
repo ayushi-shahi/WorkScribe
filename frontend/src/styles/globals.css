@@ -1,4 +1,5 @@
 @import './tokens.css';
+@import './dashboard.css';
 
 *, *::before, *::after {
   box-sizing: border-box;
@@ -113,4 +114,229 @@ a:hover {
   font-weight: 500;
   color: var(--text-muted);
   letter-spacing: 0.02em;
+}
+
+/* ── Command Palette ──────────────────────────────────────────────────────────── */
+.cp-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: var(--z-modal);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 80px;
+  animation: cp-overlay-in 0.1s ease-out;
+}
+
+@keyframes cp-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.cp-modal {
+  width: 100%;
+  max-width: 560px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: cp-modal-in 0.12s ease-out;
+  max-height: calc(100vh - 160px);
+}
+
+@keyframes cp-modal-in {
+  from { opacity: 0; transform: scale(0.97) translateY(-4px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ── Input row ────────────────────────────────────────────────────────────────── */
+.cp-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-4);
+  height: 52px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.cp-search-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.cp-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  font-size: 14px;
+  font-family: var(--font);
+  color: var(--text-primary);
+  caret-color: var(--brand);
+}
+
+.cp-input::placeholder {
+  color: var(--text-muted);
+}
+
+.cp-clear {
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface2);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition-fast);
+}
+
+.cp-clear:hover {
+  background: var(--surface3);
+  color: var(--text-primary);
+}
+
+.cp-esc-hint {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background: var(--surface3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 2px 5px;
+  flex-shrink: 0;
+}
+
+/* ── Body ─────────────────────────────────────────────────────────────────────── */
+.cp-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2) 0;
+  min-height: 60px;
+}
+
+.cp-loading,
+.cp-empty {
+  padding: var(--space-4) var(--space-5);
+  font-size: 13px;
+  color: var(--text-muted);
+  font-family: var(--font);
+  text-align: center;
+}
+
+/* ── Group ────────────────────────────────────────────────────────────────────── */
+.cp-group {
+  margin-bottom: var(--space-1);
+}
+
+.cp-group-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-4);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+/* ── Item ─────────────────────────────────────────────────────────────────────── */
+.cp-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: 8px var(--space-4);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font);
+  transition: background var(--transition-fast);
+}
+
+.cp-item--active {
+  background: var(--surface2);
+}
+
+.cp-item-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface2);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.cp-item--active .cp-item-icon {
+  background: var(--brand-light);
+  color: var(--brand);
+}
+
+.cp-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.cp-item-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cp-item-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+}
+
+/* ── Footer ───────────────────────────────────────────────────────────────────── */
+.cp-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.cp-footer span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font);
+}
+
+.cp-footer kbd {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 1px 4px;
 }

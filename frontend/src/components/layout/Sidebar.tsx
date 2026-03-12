@@ -132,9 +132,12 @@ export default function Sidebar({ org }: SidebarProps) {
           </button>
           <button
             className="sidebar-action-btn"
-            onClick={() => navigate(`/org/${slug}/wiki`)}
-            title="Wiki home"
-            aria-label="Wiki home"
+            onClick={() => {
+              navigate(`/org/${slug}/wiki`)
+              window.dispatchEvent(new CustomEvent('wiki:new-space'))
+            }}
+            title="Wiki"
+            aria-label="Wiki"
           >
             <Plus size={13} />
           </button>
@@ -148,7 +151,8 @@ export default function Sidebar({ org }: SidebarProps) {
             {wikiSpaces.map((space) => (
               <NavLink
                 key={space.id}
-                to={`/org/${slug}/wiki`}
+                // Link directly to the space — WikiLayout reads :spaceId param
+                to={`/org/${slug}/wiki/${space.id}`}
                 className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}
               >
                 <span className="sidebar-item-icon" style={{ fontSize: 13 }}>

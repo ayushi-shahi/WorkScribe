@@ -3,6 +3,7 @@ import type { WikiSpace, Page } from '@/types'
 
 export interface CreateSpaceRequest {
   name: string
+  key: string          // required by backend — auto-derived from name as slug
   description?: string
   icon_emoji?: string
 }
@@ -29,20 +30,30 @@ export async function getWikiSpacesApi(slug: string): Promise<WikiSpace[]> {
   const res = await apiClient.get<{ spaces: WikiSpace[]; total: number }>(
     `/organizations/${slug}/wiki/spaces`
   )
-  return res.data.spaces
+  return Array.isArray(res.data.spaces) ? res.data.spaces : []
 }
 
 export async function createWikiSpaceApi(
   slug: string,
   data: CreateSpaceRequest
 ): Promise<WikiSpace> {
-  const res = await apiClient.post<WikiSpace>(`/organizations/${slug}/wiki/spaces`, data)
+  const res = await apiClient.post<WikiSpace>(
+    `/organizations/${slug}/wiki/spaces`,
+    data
+  )
   return res.data
 }
 
 export async function getPageTreeApi(spaceId: string): Promise<PageTreeNode[]> {
-  const res = await apiClient.get<PageTreeNode[]>(`/wiki/spaces/${spaceId}/pages`)
-  return res.data
+  const res = await apiClient.get<
+    PageTreeNode[] | { pages: PageTreeNode[]; total: number }
+  >(`/wiki/spaces/${spaceId}/pages`)
+  const data = res.data
+  if (Array.isArray(data)) return data
+  if (data && typeof data === 'object' && 'pages' in data && Array.isArray(data.pages)) {
+    return data.pages
+  }
+  return []
 }
 
 export async function getPageApi(pageId: string): Promise<Page> {

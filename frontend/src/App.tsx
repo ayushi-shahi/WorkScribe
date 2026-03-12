@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast'
 
 // Layouts
 import OrgLayout from '@/layouts/OrgLayout'
+import WikiLayout from '@/layouts/WikiLayout'
 import ProtectedRoute from '@/components/ProtectedRoute'
 
 // Pages
@@ -56,8 +57,21 @@ const router = createBrowserRouter([
       { path: 'dashboard', element: <DashboardPage /> },
       { path: 'projects/:key/board', element: <BoardPage /> },
       { path: 'projects/:key/backlog', element: <BacklogPage /> },
-      { path: 'wiki', element: <WikiHomePage /> },
-      { path: 'wiki/:spaceKey/:pageId', element: <PageEditorPage /> },
+
+      // ── Wiki routes — nested inside WikiLayout ─────────────────────────────
+      {
+        path: 'wiki',
+        element: <WikiLayout />,
+        children: [
+          // /org/:slug/wiki  →  WikiHomePage (no space selected)
+          { index: true, element: <WikiHomePage /> },
+          // /org/:slug/wiki/:spaceId  →  WikiHomePage inside a space context
+          { path: ':spaceId', element: <WikiHomePage /> },
+          // /org/:slug/wiki/:spaceId/:pageId  →  PageEditorPage
+          { path: ':spaceId/:pageId', element: <PageEditorPage /> },
+        ],
+      },
+
       { path: 'settings', element: <OrgSettingsPage /> },
       { path: 'settings/members', element: <MembersPage /> },
     ],

@@ -5,7 +5,8 @@ import { Bell, Search, ChevronDown, LogOut, User, Settings } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { useUIStore } from '@/stores/uiStore'
 import { logoutApi } from '@/api/endpoints/auth'
-import { getOrgMembersApi } from '@/api/endpoints/organizations'
+import { getNotificationsApi } from '@/api/endpoints/notifications'
+import NotificationsPanel from '@/components/layout/NotificationsPanel'
 import type { Organization } from '@/types'
 import '@/styles/layout.css'
 
@@ -14,15 +15,26 @@ interface TopbarProps {
 }
 
 export default function Topbar({ org }: TopbarProps) {
-  const navigate = useNavigate()
-  const { slug } = useParams<{ slug: string }>()
-  const user = useAuthStore((s) => s.user)
-  const clearAuth = useAuthStore((s) => s.clearAuth)
-  const openCommandPalette = useUIStore((s) => s.openCommandPalette)
+  const navigate   = useNavigate()
+  const { slug }   = useParams<{ slug: string }>()
+  const user       = useAuthStore((s) => s.user)
+  const clearAuth  = useAuthStore((s) => s.clearAuth)
+  const openCommandPalette       = useUIStore((s) => s.openCommandPalette)
   const toggleNotificationsPanel = useUIStore((s) => s.toggleNotificationsPanel)
+  const isNotifOpen              = useUIStore((s) => s.isNotificationsPanelOpen)
 
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false)
   const avatarMenuRef = useRef<HTMLDivElement>(null)
+
+  // Fetch notifications on mount to populate unread count + bell badge
+  const { data: notifData } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: getNotificationsApi,
+    staleTime: 60 * 1000,
+  })
+
+  // Unread count — derived from cache (updated by REST fetch or WS push)
+  const bellUnread = notifData?.unread_count ?? 0
 
   // Close avatar menu on outside click
   useEffect(() => {
@@ -103,16 +115,21 @@ export default function Topbar({ org }: TopbarProps) {
 
       {/* ── Right: notif bell + avatar ───────────────────── */}
       <div className="topbar-right">
-        {/* Notification bell — stub, wired in H2 */}
-        <button
-          className="topbar-icon-btn"
-          onClick={toggleNotificationsPanel}
-          aria-label="Notifications"
-        >
-          <Bell size={16} />
-          {/* Unread badge — wired in H2 */}
-          {/* <span className="notif-badge" /> */}
-        </button>
+
+        {/* Notification bell */}
+        <div style={{ position: 'relative' }}>
+          <button
+            className={`topbar-icon-btn${isNotifOpen ? ' topbar-icon-btn--active' : ''}`}
+            onClick={toggleNotificationsPanel}
+            aria-label="Notifications"
+            aria-expanded={isNotifOpen}
+          >
+            <Bell size={16} />
+            {bellUnread > 0 && <span className="notif-badge" />}
+          </button>
+
+          <NotificationsPanel />
+        </div>
 
         {/* Avatar + dropdown */}
         <div ref={avatarMenuRef} style={{ position: 'relative' }}>
@@ -123,14 +140,11 @@ export default function Topbar({ org }: TopbarProps) {
             aria-label="User menu"
             aria-expanded={avatarMenuOpen}
           >
-            <div className="avatar avatar-md">
-              {initials}
-            </div>
+            <div className="avatar avatar-md">{initials}</div>
           </button>
 
           {avatarMenuOpen && (
             <div className="topbar-dropdown" role="menu">
-              {/* User info */}
               <div className="topbar-dropdown-header">
                 <div className="avatar avatar-lg" style={{ flexShrink: 0 }}>
                   {initials}

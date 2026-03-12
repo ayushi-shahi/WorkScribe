@@ -1,7 +1,288 @@
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { useParams, useOutletContext, Link } from 'react-router-dom'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { ChevronRight, Clock, Save } from 'lucide-react'
+import { formatDistanceToNow } from 'date-fns'
+import { getPageApi, updatePageApi } from '@/api/endpoints/wiki'
+import WikiEditor, { clearDraft, type WikiEditorHandle } from '@/components/wiki/WikiEditor'
+import type { WikiSpace, Page } from '@/types'
+import type { PageTreeNode } from '@/api/endpoints/wiki'
+import '@/styles/wiki.css'
+
+// ── Outlet context ─────────────────────────────────────────────────────────────
+
+interface WikiOutletContext {
+  spaces: WikiSpace[]
+  pageTree: PageTreeNode[]
+  activeSpace: WikiSpace | null
+}
+
+// ── PageEditorPage ─────────────────────────────────────────────────────────────
+
 export default function PageEditorPage() {
+  const { slug, spaceId, pageId } = useParams<{
+    slug: string
+    spaceId: string
+    pageId: string
+  }>()
+  const queryClient = useQueryClient()
+
+  const ctx = useOutletContext<WikiOutletContext | null>()
+  const activeSpace = ctx?.activeSpace ?? null
+
+  // ── Fetch page ──────────────────────────────────────────────
+  const { data: page, isLoading } = useQuery({
+    queryKey: ['page', pageId],
+    queryFn: () => getPageApi(pageId ?? ''),
+    enabled: !!pageId,
+    staleTime: 30_000,
+  })
+
+  // ── Editable title ───────────────────────────────────────────
+  const [titleValue, setTitleValue] = useState('')
+  const [titleFocused, setTitleFocused] = useState(false)
+  const titleRef = useRef<HTMLTextAreaElement>(null)
+  const titleSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    if (page && !titleFocused) setTitleValue(page.title)
+  }, [page, titleFocused])
+
+  useEffect(() => {
+    const el = titleRef.current
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }, [titleValue])
+
+  // ── Title save mutation ──────────────────────────────────────
+  const titleMutation = useMutation({
+    mutationFn: (title: string) => updatePageApi(pageId ?? '', { title }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['page-tree', spaceId] })
+      queryClient.invalidateQueries({ queryKey: ['page', pageId] })
+    },
+  })
+
+  const scheduleTitleSave = useCallback(
+    (title: string) => {
+      if (titleSaveTimer.current) clearTimeout(titleSaveTimer.current)
+      titleSaveTimer.current = setTimeout(() => {
+        if (title.trim() && title !== page?.title) {
+          titleMutation.mutate(title.trim())
+        }
+      }, 800)
+    },
+    [page?.title, titleMutation]
+  )
+
+  function handleTitleChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
+    setTitleValue(e.target.value)
+    scheduleTitleSave(e.target.value)
+  }
+
+  function handleTitleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault()
+      editorRef.current?.focus()
+    }
+  }
+
+  // ── Content save state ───────────────────────────────────────
+  const editorRef = useRef<WikiEditorHandle>(null)
+  const contentSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // isDirty: true once user has typed something not yet confirmed saved
+  const [isDirty, setIsDirty] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [savedFlash, setSavedFlash] = useState(false)
+
+  // ── Content save mutation ────────────────────────────────────
+  const contentMutation = useMutation({
+    mutationFn: (json: Record<string, unknown>) =>
+      updatePageApi(pageId ?? '', { content_json: json }),
+    onSuccess: () => {
+      if (pageId) clearDraft(pageId)
+      queryClient.invalidateQueries({ queryKey: ['page', pageId] })
+      setIsSaving(false)
+      setIsDirty(false)
+      setSavedFlash(true)
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+      savedTimerRef.current = setTimeout(() => setSavedFlash(false), 2500)
+    },
+    onError: () => {
+      setIsSaving(false)
+      // keep isDirty=true so user can retry
+    },
+  })
+
+  // ── Manual save ──────────────────────────────────────────────
+  const saveNow = useCallback(() => {
+    if (!editorRef.current || !isDirty) return
+    if (contentSaveTimer.current) clearTimeout(contentSaveTimer.current)
+    const json = editorRef.current.getJSON()
+    setIsSaving(true)
+    contentMutation.mutate(json)
+  }, [isDirty, contentMutation])
+
+  // ── Cmd/Ctrl+S shortcut ──────────────────────────────────────
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+        e.preventDefault()
+        saveNow()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [saveNow])
+
+  // ── Debounced autosave triggered by editor onChange ──────────
+  const handleEditorChange = useCallback(
+    (json: Record<string, unknown>) => {
+      setIsDirty(true)
+      setSavedFlash(false)
+      if (contentSaveTimer.current) clearTimeout(contentSaveTimer.current)
+      contentSaveTimer.current = setTimeout(() => {
+        setIsSaving(true)
+        contentMutation.mutate(json)
+      }, 1500)
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pageId]
+  )
+
+  // ── Tab title unsaved indicator ──────────────────────────────
+  useEffect(() => {
+    const base = 'WorkScribe'
+    document.title = isDirty ? `• ${base}` : base
+    return () => {
+      document.title = base
+    }
+  }, [isDirty])
+
+  // Reset dirty state when navigating to a different page
+  useEffect(() => {
+    setIsDirty(false)
+    setIsSaving(false)
+    setSavedFlash(false)
+  }, [pageId])
+
+  // ── Loading / empty states ───────────────────────────────────
+  if (isLoading) {
+    return (
+      <div className="wiki-editor-loading">
+        <div className="wiki-editor-loading-bar" style={{ width: 200, marginBottom: 16 }} />
+        <div className="wiki-editor-loading-bar" style={{ width: 340, height: 44 }} />
+      </div>
+    )
+  }
+
+  if (!page) return null
+
+  const showSaving = isSaving || titleMutation.isPending
+  const showSaved = savedFlash && !isSaving && !titleMutation.isPending
+
   return (
-    <div style={{ color: 'var(--text-primary)', padding: 40, fontFamily: 'var(--font)' }}>
-      Page Editor — stub (G3)
+    <div className="wiki-page-shell">
+      {/* ── Breadcrumb ────────────────────────────────── */}
+      <div className="wiki-breadcrumb">
+        <Link
+          to={`/org/${slug}/wiki/${spaceId}`}
+          className="wiki-breadcrumb-item wiki-breadcrumb-item--link"
+        >
+          {activeSpace?.icon_emoji ? (
+            <span className="wiki-breadcrumb-emoji">{activeSpace.icon_emoji}</span>
+          ) : null}
+          {activeSpace?.name ?? 'Wiki'}
+        </Link>
+        <ChevronRight size={12} className="wiki-breadcrumb-sep" />
+        <span className="wiki-breadcrumb-item wiki-breadcrumb-item--current">
+          {page.title}
+        </span>
+      </div>
+
+      {/* ── Editable title ────────────────────────────── */}
+      <div className="wiki-page-title-wrap">
+        <textarea
+          ref={titleRef}
+          className="wiki-page-title-input"
+          value={titleValue}
+          onChange={handleTitleChange}
+          onKeyDown={handleTitleKeyDown}
+          onFocus={() => setTitleFocused(true)}
+          onBlur={() => {
+            setTitleFocused(false)
+            if (titleSaveTimer.current) clearTimeout(titleSaveTimer.current)
+            if (titleValue.trim() && titleValue.trim() !== page.title) {
+              titleMutation.mutate(titleValue.trim())
+            }
+          }}
+          placeholder="Untitled"
+          rows={1}
+          spellCheck={false}
+        />
+      </div>
+
+      {/* ── Meta row ──────────────────────────────────── */}
+      <div className="wiki-page-meta">
+        <AuthorAvatar page={page} />
+        <span className="wiki-page-meta-text">
+          <Clock size={11} />
+          {page.updated_at
+            ? `Edited ${formatDistanceToNow(new Date(page.updated_at), {
+                addSuffix: true,
+              })}`
+            : 'Just created'}
+        </span>
+
+        {/* Save status */}
+        {showSaving && (
+          <span className="wiki-page-save-indicator">Saving…</span>
+        )}
+        {showSaved && (
+          <span className="wiki-page-save-indicator wiki-page-save-indicator--saved">
+            Saved
+          </span>
+        )}
+
+        {/* Manual save button — highlighted when dirty */}
+        <button
+          type="button"
+          className={`wiki-save-btn${isDirty ? ' wiki-save-btn--dirty' : ''}`}
+          onClick={saveNow}
+          disabled={!isDirty || isSaving}
+          title="Save (⌘S)"
+        >
+          <Save size={12} />
+          {isDirty ? 'Save' : 'Saved'}
+        </button>
+      </div>
+
+      {/* ── Divider ───────────────────────────────────── */}
+      <div className="wiki-page-divider" />
+
+      {/* ── Tiptap editor ─────────────────────────────── */}
+      <div className="wiki-page-editor-area" id="wiki-editor-mount">
+        <WikiEditor
+          ref={editorRef}
+          pageId={pageId ?? ''}
+          initialContent={page.content_json ?? null}
+          onChange={handleEditorChange}
+        />
+      </div>
     </div>
+  )
+}
+
+// ── AuthorAvatar ───────────────────────────────────────────────────────────────
+
+function AuthorAvatar({ page }: { page: Page }) {
+  const initials = 'A'
+  return (
+    <span className="wiki-page-meta-avatar avatar avatar-xs" title="Author">
+      {initials}
+    </span>
   )
 }
