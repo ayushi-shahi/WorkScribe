@@ -31,6 +31,8 @@ import {
   removeTaskFromSprintApi,
 } from '@/api/endpoints/tasks'
 import { getProjectsApi, getProjectStatusesApi } from '@/api/endpoints/projects'
+import { getOrgMembersApi } from '@/api/endpoints/organizations'
+import { useAuthStore } from '@/stores/authStore'
 import BacklogTaskRow from '@/components/backlog/BacklogTaskRow'
 import CreateSprintModal from '@/components/backlog/CreateSprintModal'
 import StartSprintModal from '@/components/backlog/StartSprintModal'
@@ -200,6 +202,7 @@ interface SprintSectionProps {
   firstStatusId: string
   projectId: string
   plannedSprints: Sprint[]
+  canManage: boolean
   onTaskClick: (task: Task) => void
 }
 
@@ -209,18 +212,19 @@ function SprintSection({
   firstStatusId,
   projectId,
   plannedSprints,
+  canManage,
   onTaskClick,
 }: SprintSectionProps) {
-  const [collapsed, setCollapsed]             = useState(false)
-  const [showCreate, setShowCreate]           = useState(false)
-  const [showStart, setShowStart]             = useState(false)
-  const [showComplete, setShowComplete]       = useState(false)
+  const [collapsed, setCollapsed]       = useState(false)
+  const [showCreate, setShowCreate]     = useState(false)
+  const [showStart, setShowStart]       = useState(false)
+  const [showComplete, setShowComplete] = useState(false)
 
-  const doneTasks      = tasks.filter((t) => t.status?.category === 'done').length
+  const doneTasks       = tasks.filter((t) => t.status?.category === 'done').length
   const incompleteTasks = tasks.filter((t) => t.status?.category !== 'done').length
-  const totalTasks     = tasks.length
-  const progress       = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0
-  const isActive       = sprint.status === 'active'
+  const totalTasks      = tasks.length
+  const progress        = totalTasks > 0 ? Math.round((doneTasks / totalTasks) * 100) : 0
+  const isActive        = sprint.status === 'active'
 
   return (
     <>
@@ -246,26 +250,28 @@ function SprintSection({
           )}
           <span className="bl-section-count">{totalTasks} task{totalTasks !== 1 ? 's' : ''}</span>
 
-          {/* Action buttons — stop propagation so header click doesn't collapse */}
-          <div className="bl-section-actions" onClick={(e) => e.stopPropagation()}>
-            {isActive ? (
-              <button
-                type="button"
-                className="bl-sprint-action-btn bl-sprint-action-btn--complete"
-                onClick={() => setShowComplete(true)}
-              >
-                Complete Sprint
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="bl-sprint-action-btn bl-sprint-action-btn--start"
-                onClick={() => setShowStart(true)}
-              >
-                Start Sprint
-              </button>
-            )}
-          </div>
+          {/* Sprint actions — owner/admin only */}
+          {canManage && (
+            <div className="bl-section-actions" onClick={(e) => e.stopPropagation()}>
+              {isActive ? (
+                <button
+                  type="button"
+                  className="bl-sprint-action-btn bl-sprint-action-btn--complete"
+                  onClick={() => setShowComplete(true)}
+                >
+                  Complete Sprint
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="bl-sprint-action-btn bl-sprint-action-btn--start"
+                  onClick={() => setShowStart(true)}
+                >
+                  Start Sprint
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {!collapsed && (
@@ -301,7 +307,7 @@ function SprintSection({
         )}
       </div>
 
-      {showStart && (
+      {showStart && canManage && (
         <StartSprintModal
           sprint={sprint}
           taskCount={totalTasks}
@@ -309,7 +315,7 @@ function SprintSection({
         />
       )}
 
-      {showComplete && (
+      {showComplete && canManage && (
         <CompleteSprintModal
           sprint={sprint}
           incompleteTasks={incompleteTasks}
@@ -332,7 +338,7 @@ interface BacklogSectionProps {
 }
 
 function BacklogSection({ tasks, firstStatusId, projectId, sprints, onTaskClick }: BacklogSectionProps) {
-  const [collapsed, setCollapsed] = useState(false)
+  const [collapsed, setCollapsed]   = useState(false)
   const [showCreate, setShowCreate] = useState(false)
   const sprintMap = new Map(sprints.map((s) => [s.id, s]))
 
@@ -413,12 +419,16 @@ export default function BacklogPage() {
   const { slug, key } = useParams<{ slug: string; key: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const currentUser = useAuthStore((s) => s.user)
+
   const [activeTask, setActiveTask]             = useState<Task | null>(null)
   const [showCreateSprint, setShowCreateSprint] = useState(false)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   )
+
+  // ── Queries ────────────────────────────────────────────────────────────────
 
   const { data: projects = [] } = useQuery({
     queryKey: ['projects', slug],
@@ -447,6 +457,27 @@ export default function BacklogPage() {
   const allSprints: Sprint[]  = sprintData?.sprints ?? []
   const activeSprints         = allSprints.filter((s) => s.status === 'active')
   const plannedSprints        = allSprints.filter((s) => s.status === 'planned')
+
+  // ── Role check ─────────────────────────────────────────────────────────────
+
+  const { data: rawMembers } = useQuery({
+    queryKey: ['members', slug],
+    queryFn: () => getOrgMembersApi(slug ?? ''),
+    enabled: !!slug,
+    staleTime: 60_000,
+  })
+
+  const members = (() => {
+    if (!rawMembers) return []
+    if (Array.isArray(rawMembers)) return rawMembers
+    return (rawMembers as { members?: typeof rawMembers[] }).members ?? []
+  })()
+
+  const currentMember  = members.find((m: any) => m.user_id === currentUser?.id)
+  const currentRole    = currentMember?.role ?? 'member'
+  const canManage      = currentRole === 'owner' || currentRole === 'admin'
+
+  // ── Task queries ───────────────────────────────────────────────────────────
 
   const allTasksKey     = ['backlog', slug, project?.id]
   const backlogTasksKey = ['backlog-tasks', slug, project?.id]
@@ -629,16 +660,20 @@ export default function BacklogPage() {
               Backlog
             </NavLink>
           </div>
-          <div className="bl-header-actions">
-            <button
-              type="button"
-              className="bl-new-sprint-btn"
-              onClick={() => setShowCreateSprint(true)}
-            >
-              <Plus size={13} />
-              New Sprint
-            </button>
-          </div>
+
+          {/* New Sprint — owner/admin only */}
+          {canManage && (
+            <div className="bl-header-actions">
+              <button
+                type="button"
+                className="bl-new-sprint-btn"
+                onClick={() => setShowCreateSprint(true)}
+              >
+                <Plus size={13} />
+                New Sprint
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="bl-content">
@@ -650,6 +685,7 @@ export default function BacklogPage() {
               firstStatusId={firstStatusId}
               projectId={project.id}
               plannedSprints={plannedSprints}
+              canManage={canManage}
               onTaskClick={handleTaskClick}
             />
           ))}
@@ -662,6 +698,7 @@ export default function BacklogPage() {
               firstStatusId={firstStatusId}
               projectId={project.id}
               plannedSprints={plannedSprints}
+              canManage={canManage}
               onTaskClick={handleTaskClick}
             />
           ))}
@@ -691,7 +728,7 @@ export default function BacklogPage() {
         )}
       </DragOverlay>
 
-      {showCreateSprint && (
+      {showCreateSprint && canManage && (
         <CreateSprintModal
           projectId={project.id}
           onClose={() => setShowCreateSprint(false)}

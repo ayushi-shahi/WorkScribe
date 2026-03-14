@@ -366,7 +366,7 @@ export default function CreateTaskModal({ projectId, defaultStatusId, onClose, o
                     >
                       <span className="ctm-label-swatch" style={{ background: lbl.color }} />
                       {lbl.name}
-                      {checked && <span className="ctm-check">checkmark</span>}
+                      {checked && <span className="ctm-check">✓</span>}
                     </button>
                   )
                 })}

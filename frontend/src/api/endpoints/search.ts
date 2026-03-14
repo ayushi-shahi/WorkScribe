@@ -14,5 +14,5 @@ export async function searchApi(slug: string, q: string, type?: 'task' | 'page')
   const res = await apiClient.get<SearchResult[]>(
     `/organizations/${slug}/search?${params.toString()}`
   )
-  return res.data
+  return res.data.results
 }

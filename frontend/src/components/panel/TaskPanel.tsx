@@ -304,13 +304,13 @@ function LinkDocModal({ slug, taskId, existingPageIds, onClose, onLinked }: Link
     return () => window.removeEventListener('keydown', handler)
   }, [onClose])
 
-  const { data: results = [], isFetching } = useQuery({
+  const { data: rawResults, isFetching } = useQuery({
     queryKey: ['search-pages', slug, debouncedQuery],
     queryFn: () => searchApi(slug, debouncedQuery, 'page'),
     enabled: debouncedQuery.length >= 1,
     staleTime: 10_000,
   })
-
+  const results = Array.isArray(rawResults) ? rawResults : (rawResults as any)?.data ?? []
   const linkMutation = useMutation({
     mutationFn: (pageId: string) => createTaskLinkApi(taskId, pageId),
     onSuccess: () => {
@@ -386,7 +386,6 @@ function SubtasksSection({ parentTaskId, slug, projectId, statuses }: SubtasksSe
   const inputRef = useRef<HTMLInputElement>(null)
 
   const todoStatus = statuses.find((s) => s.category === 'todo')
-  const doneStatus = statuses.find((s) => s.category === 'done')
 
   const { data, isLoading } = useQuery({
     queryKey: ['subtasks', parentTaskId],
@@ -397,7 +396,6 @@ function SubtasksSection({ parentTaskId, slug, projectId, statuses }: SubtasksSe
 
   const subtasks: Task[] = data?.tasks ?? []
 
-  // ── Toggle done ───────────────────────────────────────────────────────────
   const toggleMutation = useMutation({
     mutationFn: ({ taskId, statusId }: { taskId: string; statusId: string }) =>
       updateTaskApi(taskId, { status_id: statusId }),
@@ -426,7 +424,6 @@ function SubtasksSection({ parentTaskId, slug, projectId, statuses }: SubtasksSe
     },
   })
 
-  // ── Create subtask ────────────────────────────────────────────────────────
   const createMutation = useMutation({
     mutationFn: (title: string) =>
       createTaskApi(slug, projectId, {
@@ -485,7 +482,6 @@ function SubtasksSection({ parentTaskId, slug, projectId, statuses }: SubtasksSe
         </button>
       </div>
 
-      {/* Progress bar — only shown when there are subtasks */}
       {totalCount > 0 && (
         <div className="tp-subtasks-progress">
           <div
@@ -538,7 +534,6 @@ function SubtasksSection({ parentTaskId, slug, projectId, statuses }: SubtasksSe
         <div className="tp-subtasks-empty">No subtasks yet</div>
       )}
 
-      {/* Inline create input */}
       {showInput && (
         <div className="tp-subtask-input-row">
           <Square size={15} className="tp-subtask-check-icon tp-subtask-input-icon" />
@@ -709,10 +704,10 @@ export default function TaskPanel() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task?.id, editor])
 
-  // ── Comment submit — optimistic ───────────────────────────────────────────
+  // ── Comment submit ────────────────────────────────────────────────────────
   const commentMutation = useMutation({
-    mutationFn: () => createCommentApi(resolvedId!, comment.trim()),
-    onMutate: async () => {
+    mutationFn: (text: string) => createCommentApi(resolvedId!, text),
+    onMutate: async (text: string) => {
       await queryClient.cancelQueries({ queryKey: ['comments', resolvedId] })
       const previous = queryClient.getQueryData<{ comments: Comment[]; total: number }>(['comments', resolvedId])
       const optimistic: Comment = {
@@ -727,7 +722,7 @@ export default function TaskPanel() {
         },
         body_json: {
           type: 'doc',
-          content: [{ type: 'paragraph', content: [{ type: 'text', text: comment.trim() }] }],
+          content: [{ type: 'paragraph', content: [{ type: 'text', text }] }],
         },
         is_edited: false,
         created_at: new Date().toISOString(),
@@ -737,7 +732,6 @@ export default function TaskPanel() {
         comments: [...(previous?.comments ?? []), optimistic],
         total: (previous?.total ?? 0) + 1,
       })
-      setComment('')
       return { previous }
     },
     onError: (_err, _vars, context) => {
@@ -747,6 +741,13 @@ export default function TaskPanel() {
       queryClient.invalidateQueries({ queryKey: ['comments', resolvedId] })
     },
   })
+
+  function submitComment() {
+    const text = comment.trim()
+    if (!text || commentMutation.isPending) return
+    setComment('')
+    commentMutation.mutate(text)
+  }
 
   // ── Comment delete ────────────────────────────────────────────────────────
   const deleteCommentMutation = useMutation({
@@ -928,7 +929,7 @@ export default function TaskPanel() {
 
             <div className="task-panel-divider" />
 
-            {/* ── E7: Subtasks ──────────────────────────────────────────────── */}
+            {/* Subtasks */}
             <SubtasksSection
               parentTaskId={resolvedId!}
               slug={slug ?? ''}
@@ -1040,7 +1041,7 @@ export default function TaskPanel() {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                       e.preventDefault()
-                      if (comment.trim() && !commentMutation.isPending) commentMutation.mutate()
+                      submitComment()
                     }
                   }}
                   rows={1}
@@ -1048,7 +1049,7 @@ export default function TaskPanel() {
                 <button
                   className="task-comment-submit"
                   disabled={!comment.trim() || commentMutation.isPending}
-                  onClick={() => commentMutation.mutate()}
+                  onClick={submitComment}
                   title="Submit (Cmd+Enter)"
                 >
                   <Send size={13} />
@@ -1091,6 +1092,11 @@ interface ActivityEntry {
   created_at: string
 }
 
+interface SprintSummary {
+  id: string
+  name: string
+}
+
 function ActivitySection({
   taskId,
   statuses,
@@ -1100,6 +1106,8 @@ function ActivitySection({
   statuses: TaskStatus[]
   slug: string
 }) {
+  const queryClient = useQueryClient()
+
   const { data } = useQuery({
     queryKey: ['activity', taskId],
     queryFn: () => getActivityApi(taskId),
@@ -1113,8 +1121,14 @@ function ActivitySection({
     enabled: !!slug,
     staleTime: 60_000,
   })
-  const members = Array.isArray(membersData?.members) ? membersData.members : []
 
+  // ── Resolve sprint names from cache (populated by BacklogPage) ────────────
+  const sprintQueries = queryClient.getQueriesData<{ sprints: SprintSummary[] }>({
+    queryKey: ['sprints'],
+  })
+  const allSprints: SprintSummary[] = sprintQueries.flatMap(([, data]) => data?.sprints ?? [])
+
+  const members = Array.isArray(membersData?.members) ? membersData.members : []
   const entries: ActivityEntry[] = data?.activities ?? []
 
   if (entries.length === 0) return null
@@ -1132,7 +1146,7 @@ function ActivitySection({
               <span className="tp-activity-actor">{entry.actor.display_name}</span>
               {' '}
               <span className="tp-activity-text">
-                {formatActivity(entry, statuses, members)}
+                {formatActivity(entry, statuses, members, allSprints)}
               </span>
               <div className="tp-activity-time">
                 {new Date(entry.created_at).toLocaleDateString('en-US', {
@@ -1150,7 +1164,8 @@ function ActivitySection({
 function formatActivity(
   entry: ActivityEntry,
   statuses: TaskStatus[],
-  members: import('@/types').OrgMember[]
+  members: import('@/types').OrgMember[],
+  sprints: SprintSummary[] = [],
 ): string {
   const action = entry.action
 
@@ -1182,9 +1197,11 @@ function formatActivity(
     }
     const fieldLabel = fieldLabels[field] ?? field.replace(/_/g, ' ')
 
-    // Resolve UUIDs to human-readable names
     const resolve = (val: unknown): string => {
-      if (val === null || val === undefined) return 'none'
+      if (val === null || val === undefined || val === 'null') {
+        if (field === 'sprint_id') return 'backlog'
+        return 'none'
+      }
       const str = String(val)
       if (field === 'status_id') {
         const found = statuses.find((s) => s.id === str)
@@ -1194,16 +1211,25 @@ function formatActivity(
         const found = members.find((m) => m.user_id === str)
         return found ? found.display_name : str
       }
+      if (field === 'sprint_id') {
+        const found = sprints.find((s) => s.id === str)
+        return found ? `"${found.name}"` : 'a sprint'
+      }
       return str
     }
 
     const newVal = resolve(newRaw)
     const oldVal = oldRaw !== undefined ? resolve(oldRaw) : null
 
-    if (oldVal && oldVal !== 'none') {
+    // Special case: moved to backlog
+    if (field === 'sprint_id' && newVal === 'backlog') {
+      return `moved task to backlog`
+    }
+
+    if (oldVal && oldVal !== 'none' && oldVal !== 'backlog') {
       return `changed ${fieldLabel} from "${oldVal}" to "${newVal}"`
     }
-    return `set ${fieldLabel} to "${newVal}"`
+    return `set ${fieldLabel} to ${newVal}`
   }
 
   if (action === 'COMMENT_ADDED') return 'added a comment'
@@ -1212,6 +1238,7 @@ function formatActivity(
 
   return action.toLowerCase().replace(/_/g, ' ')
 }
+
 // ── Hook: resolve "APP-1" → uuid ──────────────────────────────────────────────
 
 function useResolveTaskId(taskIdParam: string | null, slug: string | undefined): string | null {

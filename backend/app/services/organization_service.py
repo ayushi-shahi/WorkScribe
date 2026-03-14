@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import redis.asyncio as aioredis
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, BackgroundTasks
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,9 +35,10 @@ from app.schemas.organization import (
 class OrganizationService:
     """Handles all organization operations."""
 
-    def __init__(self, db: AsyncSession, redis: aioredis.Redis) -> None:
+    def __init__(self, db: AsyncSession, redis: aioredis.Redis, background_tasks: BackgroundTasks | None = None) -> None:
         self.db = db
         self.redis = redis
+        self.background_tasks = background_tasks
 
     # -----------------------------------------------------------------------
     # Create Organization
@@ -148,7 +149,8 @@ class OrganizationService:
         self, org: Organization, data: InviteRequest, inviter: User
     ) -> InvitationResponse:
         # Check if email already has a pending invitation
-        existing_invite = await self.db.execute(
+        # If a pending invitation already exists, revoke it and re-invite
+        existing_invite_result = await self.db.execute(
             select(Invitation).where(
                 Invitation.org_id == org.id,
                 Invitation.email == data.email.lower(),
@@ -156,11 +158,10 @@ class OrganizationService:
                 Invitation.expires_at > datetime.now(UTC),
             )
         )
-        if existing_invite.scalar_one_or_none() is not None:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail={"code": "INVITE_EXISTS", "message": "A pending invitation already exists for this email"},
-            )
+        existing_invite = existing_invite_result.scalar_one_or_none()
+        if existing_invite is not None:
+            await self.db.delete(existing_invite)
+            await self.db.flush()
 
         # Check if user is already a member
         existing_user = await self.db.execute(
@@ -199,15 +200,17 @@ class OrganizationService:
 
         # Queue invitation email
         from app.workers.email_tasks import send_invitation_email
-        send_invitation_email.delay(
-            to_email=data.email.lower(),
-            org_name=org.name,
-            org_slug=org.slug,
-            inviter_name=inviter.display_name,
-            role=data.role,
-            invitation_token=token,
-            frontend_url=settings.FRONTEND_URL,
-        )
+        if self.background_tasks:
+            self.background_tasks.add_task(
+                send_invitation_email,
+                to_email=data.email.lower(),
+                org_name=org.name,
+                org_slug=org.slug,
+                inviter_name=inviter.display_name,
+                role=data.role,
+                invitation_token=token,
+                frontend_url=settings.FRONTEND_URL,
+            )
 
         return InvitationResponse(
             id=invitation.id,

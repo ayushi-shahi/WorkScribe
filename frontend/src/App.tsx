@@ -22,6 +22,7 @@ import PageEditorPage from '@/pages/PageEditorPage'
 import OrgSettingsPage from '@/pages/OrgSettingsPage'
 import MembersPage from '@/pages/MembersPage'
 import NotFoundPage from '@/pages/NotFoundPage'
+import ProjectSettingsPage from '@/pages/ProjectSettingsPage'
 
 // ── TanStack Query client ──────────────────────────────────────────────────────
 const queryClient = new QueryClient({
@@ -42,6 +43,7 @@ const router = createBrowserRouter([
   { path: '/forgot-password', element: <ForgotPasswordPage /> },
   { path: '/reset-password', element: <ResetPasswordPage /> },
   { path: '/invitations/:token', element: <AcceptInvitePage /> },
+  { path: '/invitations/:token/accept', element: <AcceptInvitePage /> },
   { path: '/create-org', element: <OrgCreatePage /> },
 
   // Protected org routes
@@ -57,6 +59,7 @@ const router = createBrowserRouter([
       { path: 'dashboard', element: <DashboardPage /> },
       { path: 'projects/:key/board', element: <BoardPage /> },
       { path: 'projects/:key/backlog', element: <BacklogPage /> },
+      { path: 'projects/:key/settings', element: <ProjectSettingsPage /> },
 
       // ── Wiki routes — nested inside WikiLayout ─────────────────────────────
       {

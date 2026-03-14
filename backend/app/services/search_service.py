@@ -85,7 +85,7 @@ class SearchService:
             .where(
                 Page.org_id == org_id,
                 Page.title.ilike(pattern),
-                Page.is_deleted.is_(False),
+                Page.is_deleted.isnot(True),
             )
             .order_by(Page.updated_at.desc())
             .limit(20)

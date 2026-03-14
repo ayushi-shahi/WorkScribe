@@ -9,7 +9,7 @@ from __future__ import annotations
 from uuid import UUID
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,10 +39,11 @@ router = APIRouter()
 
 
 def get_task_service(
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ) -> TaskService:
-    return TaskService(db=db, redis=redis)
+    return TaskService(db=db, redis=redis, background_tasks=background_tasks)
 
 
 # ---------------------------------------------------------------------------

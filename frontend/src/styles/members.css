@@ -1,0 +1,386 @@
+/* ── Members root ─────────────────────────────────────────────────────────────── */
+.members-root {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--topbar-height));
+}
+
+.members-body {
+  padding: var(--space-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  max-width: 740px;
+  width: 100%;
+}
+
+/* ── Count chip in header ─────────────────────────────────────────────────────── */
+.members-count-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+/* ── Section ──────────────────────────────────────────────────────────────────── */
+.members-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.members-section-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.members-section-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font);
+  margin: 0;
+}
+
+.members-section-desc {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font);
+  margin: 0;
+}
+
+/* ── Card ─────────────────────────────────────────────────────────────────────── */
+.members-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+}
+
+.members-card--list {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* ── Invite row ───────────────────────────────────────────────────────────────── */
+.members-invite-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.members-input {
+  flex: 1;
+  height: 34px;
+  padding: 0 var(--space-3);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  font-family: var(--font);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--transition-fast);
+  min-width: 0;
+}
+
+.members-input:focus {
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px var(--brand-light);
+}
+
+.members-input:disabled {
+  opacity: 0.6;
+}
+
+/* ── Role picker ──────────────────────────────────────────────────────────────── */
+.members-role-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.members-role-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 34px;
+  padding: 0 var(--space-3);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.members-role-btn:hover:not(:disabled) {
+  background: var(--surface3);
+  border-color: var(--border2);
+}
+
+.members-role-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.members-role-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  width: 220px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  z-index: var(--z-dropdown);
+  overflow: hidden;
+  animation: dropdown-in 0.12s ease-out;
+}
+
+.members-role-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast);
+  font-family: var(--font);
+}
+
+.members-role-option:hover {
+  background: var(--surface2);
+}
+
+.members-role-option--active {
+  background: var(--brand-light);
+}
+
+.members-role-option-icon {
+  margin-top: 2px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.members-role-option-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.members-role-option-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.members-role-option-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ── Invite button ────────────────────────────────────────────────────────────── */
+.members-invite-btn {
+  height: 34px;
+  padding: 0 var(--space-4);
+  background: var(--brand);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background var(--transition-fast), opacity var(--transition-fast);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.members-invite-btn:hover:not(:disabled) {
+  background: var(--brand-hover);
+}
+
+.members-invite-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── Members list ─────────────────────────────────────────────────────────────── */
+.members-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.members-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--border);
+  transition: background var(--transition-fast);
+}
+
+.members-row:last-child {
+  border-bottom: none;
+}
+
+.members-row:hover {
+  background: var(--surface2);
+}
+
+.members-avatar {
+  flex-shrink: 0;
+}
+
+.members-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.members-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.members-you-chip {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--brand);
+  background: var(--brand-light);
+  border-radius: var(--radius-full);
+  padding: 1px 6px;
+  font-family: var(--font);
+}
+
+.members-email {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Role badge ───────────────────────────────────────────────────────────────── */
+.members-role-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: var(--font);
+  flex-shrink: 0;
+}
+
+.members-role-badge--owner {
+  background: rgba(252, 211, 77, 0.15);
+  color: var(--amber);
+}
+
+.members-role-badge--admin {
+  background: var(--brand-light);
+  color: var(--brand);
+}
+
+.members-role-badge--member {
+  background: var(--surface2);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+/* ── Joined date ──────────────────────────────────────────────────────────────── */
+.members-joined {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* ── Remove button ────────────────────────────────────────────────────────────── */
+.members-remove-btn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: background var(--transition-fast), color var(--transition-fast), opacity var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.members-row:hover .members-remove-btn {
+  opacity: 1;
+}
+
+.members-remove-btn:hover {
+  background: var(--red-bg);
+  color: var(--red);
+}
+
+/* ── Empty + skeleton ─────────────────────────────────────────────────────────── */
+.members-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-6);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-family: var(--font);
+}
+
+.members-skeleton-list {
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.members-skeleton-row {
+  height: 40px;
+  background: var(--surface2);
+  border-radius: var(--radius-sm);
+  animation: members-pulse 1.4s ease-in-out infinite;
+}
+
+.members-skeleton-row:nth-child(2) { animation-delay: 0.15s; }
+.members-skeleton-row:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes members-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.45; }
+}

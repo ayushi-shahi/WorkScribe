@@ -10,12 +10,13 @@ import {
   createPageApi,
   updatePageApi,
 } from '@/api/endpoints/wiki'
+import { getOrgMembersApi } from '@/api/endpoints/organizations'
+import { useAuthStore } from '@/stores/authStore'
 import PageTree from '@/components/wiki/PageTree'
 import type { WikiSpace } from '@/types'
 import type { PageTreeNode } from '@/api/endpoints/wiki'
 import '@/styles/wiki.css'
 
-// Derive uppercase alphanumeric key (backend: ^[A-Z0-9]+$, max 10 chars)
 function nameToKey(name: string): string {
   return name.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10)
 }
@@ -24,19 +25,37 @@ export default function WikiLayout() {
   const { slug, spaceId } = useParams<{ slug: string; spaceId: string }>()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
+  const currentUser = useAuthStore((s) => s.user)
 
-  // ── Modal / panel state ────────────────────────────────────
   const [newSpaceOpen, setNewSpaceOpen] = useState(false)
-  // undefined = closed | null = root-level | string = parentPageId
   const [newPageParent, setNewPageParent] = useState<string | null | undefined>(undefined)
   const [renameState, setRenameState] = useState<{ pageId: string; title: string } | null>(null)
 
+  // ── Fetch current user's role ──────────────────────────────
+  const { data: rawMembers } = useQuery({
+    queryKey: ['members', slug],
+    queryFn: () => getOrgMembersApi(slug ?? ''),
+    enabled: !!slug,
+    staleTime: 60_000,
+  })
+
+  const members = (() => {
+    if (!rawMembers) return []
+    if (Array.isArray(rawMembers)) return rawMembers
+    return (rawMembers as { members?: typeof rawMembers[] }).members ?? []
+  })()
+
+  const currentMember = members.find((m: any) => m.user_id === currentUser?.id)
+  const currentRole   = currentMember?.role ?? 'member'
+  const canManage     = currentRole === 'owner' || currentRole === 'admin'
+
   // ── Listen for custom events ───────────────────────────────
   useEffect(() => {
-    const handleNewSpace = () => setNewSpaceOpen(true)
+    const handleNewSpace = () => {
+      if (canManage) setNewSpaceOpen(true)
+    }
     const handleNewPage = (e: Event) => {
       const detail = (e as CustomEvent<{ spaceId?: string }>).detail
-      // Only open if event targets the current space (or no spaceId specified)
       if (!detail?.spaceId || detail.spaceId === spaceId) {
         setNewPageParent(null)
       }
@@ -47,7 +66,7 @@ export default function WikiLayout() {
       window.removeEventListener('wiki:new-space', handleNewSpace)
       window.removeEventListener('wiki:new-page', handleNewPage)
     }
-  }, [spaceId])
+  }, [spaceId, canManage])
 
   // ── Queries ────────────────────────────────────────────────
   const { data: spaces = [] } = useQuery({
@@ -101,13 +120,16 @@ export default function WikiLayout() {
       <aside className="wiki-spaces-col">
         <div className="wiki-spaces-header">
           <span className="wiki-spaces-label">Wiki</span>
-          <button
-            className="wiki-icon-btn"
-            title="New space"
-            onClick={() => setNewSpaceOpen(true)}
-          >
-            <Plus size={13} />
-          </button>
+          {/* Only owner/admin can create spaces */}
+          {canManage && (
+            <button
+              className="wiki-icon-btn"
+              title="New space"
+              onClick={() => setNewSpaceOpen(true)}
+            >
+              <Plus size={13} />
+            </button>
+          )}
         </div>
         <div className="wiki-spaces-list">
           {spaces.length === 0 && (
@@ -137,6 +159,7 @@ export default function WikiLayout() {
                 )}
               </span>
               <span className="wiki-tree-space-name">{activeSpace.name}</span>
+              {/* All members can create pages */}
               <button
                 className="wiki-icon-btn"
                 title="New page"
@@ -146,7 +169,6 @@ export default function WikiLayout() {
               </button>
             </div>
             <div className="wiki-tree-body">
-              {/* Empty state — no pages and not creating */}
               {pageTree.length === 0 && newPageParent === undefined && (
                 <div className="wiki-empty-hint wiki-empty-hint--tree">
                   <FileText size={28} strokeWidth={1.5} />
@@ -160,7 +182,6 @@ export default function WikiLayout() {
                 </div>
               )}
 
-              {/* Page tree (hidden when empty) */}
               {pageTree.length > 0 && (
                 <PageTree
                   nodes={pageTree}
@@ -170,7 +191,6 @@ export default function WikiLayout() {
                 />
               )}
 
-              {/* Inline input: root-level new page */}
               {newPageParent === null && (
                 <InlineNewPage
                   depth={0}
@@ -182,7 +202,6 @@ export default function WikiLayout() {
                 />
               )}
 
-              {/* Inline input: child page */}
               {newPageParent !== null && newPageParent !== undefined && (
                 <InlineNewPage
                   depth={1}
@@ -209,7 +228,7 @@ export default function WikiLayout() {
       </main>
 
       {/* ── Modals ─────────────────────────────────────────── */}
-      {newSpaceOpen && (
+      {newSpaceOpen && canManage && (
         <NewSpaceModal
           slug={slug ?? ''}
           onClose={() => setNewSpaceOpen(false)}
@@ -262,7 +281,7 @@ function SpaceItem({
   )
 }
 
-// ── InlineNewPage input ────────────────────────────────────────────────────────
+// ── InlineNewPage ──────────────────────────────────────────────────────────────
 
 function InlineNewPage({
   depth,
@@ -278,9 +297,7 @@ function InlineNewPage({
   const [title, setTitle] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
+  useEffect(() => { inputRef.current?.focus() }, [])
 
   function handleKey(e: React.KeyboardEvent) {
     if (e.key === 'Enter' && title.trim()) {
@@ -328,7 +345,6 @@ function NewSpaceModal({
 
   useEffect(() => { inputRef.current?.focus() }, [])
 
-  // Close on Escape
   useEffect(() => {
     function handler(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
@@ -345,7 +361,7 @@ function NewSpaceModal({
     try {
       const space = await createWikiSpaceApi(slug, {
         name: trimmedName,
-        key: nameToKey(trimmedName),   // ← required by backend
+        key: nameToKey(trimmedName),
         icon_emoji: emoji.trim() || undefined,
       })
       onCreated(space)
@@ -398,7 +414,6 @@ function NewSpaceModal({
               maxLength={80}
             />
           </div>
-          {/* Show auto-derived key as hint */}
           {name.trim() && (
             <p className="wiki-modal-hint">
               Key: <code className="wiki-modal-key-preview">{nameToKey(name)}</code>

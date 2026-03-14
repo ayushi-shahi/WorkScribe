@@ -11,9 +11,12 @@ import {
   Settings,
   Users,
   Circle,
+  SlidersHorizontal,
 } from 'lucide-react'
 import { getProjectsApi } from '@/api/endpoints/projects'
 import { getWikiSpacesApi } from '@/api/endpoints/wiki'
+import { getOrgMembersApi } from '@/api/endpoints/organizations'
+import { useAuthStore } from '@/stores/authStore'
 import type { Organization } from '@/types'
 import '@/styles/layout.css'
 
@@ -22,8 +25,9 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ org }: SidebarProps) {
-  const { slug } = useParams<{ slug: string }>()
+  const { slug, key: activeKey } = useParams<{ slug: string; key: string }>()
   const navigate = useNavigate()
+  const currentUser = useAuthStore((s) => s.user)
   const [projectsExpanded, setProjectsExpanded] = useState(true)
   const [wikiExpanded, setWikiExpanded] = useState(true)
 
@@ -41,6 +45,23 @@ export default function Sidebar({ org }: SidebarProps) {
     staleTime: 60_000,
   })
 
+  const { data: rawMembers } = useQuery({
+    queryKey: ['members', slug],
+    queryFn: () => getOrgMembersApi(slug ?? ''),
+    enabled: !!slug,
+    staleTime: 60_000,
+  })
+
+  const members = (() => {
+    if (!rawMembers) return []
+    if (Array.isArray(rawMembers)) return rawMembers
+    return (rawMembers as { members?: typeof rawMembers[] }).members ?? []
+  })()
+
+  const currentMember = members.find((m: any) => m.user_id === currentUser?.id)
+  const currentRole   = currentMember?.role ?? 'member'
+  const canManage     = currentRole === 'owner' || currentRole === 'admin'
+
   return (
     <aside className="sidebar">
       {/* ── Main nav ──────────────────────────────────────────── */}
@@ -49,9 +70,7 @@ export default function Sidebar({ org }: SidebarProps) {
           to={`/org/${slug}/dashboard`}
           className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}
         >
-          <span className="sidebar-item-icon">
-            <LayoutDashboard size={15} />
-          </span>
+          <span className="sidebar-item-icon"><LayoutDashboard size={15} /></span>
           <span className="sidebar-item-text">Dashboard</span>
         </NavLink>
 
@@ -59,9 +78,7 @@ export default function Sidebar({ org }: SidebarProps) {
           to={`/org/${slug}/my-work`}
           className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}
         >
-          <span className="sidebar-item-icon">
-            <CheckSquare size={15} />
-          </span>
+          <span className="sidebar-item-icon"><CheckSquare size={15} /></span>
           <span className="sidebar-item-text">My Work</span>
         </NavLink>
       </div>
@@ -76,20 +93,18 @@ export default function Sidebar({ org }: SidebarProps) {
             onClick={() => setProjectsExpanded((v) => !v)}
           >
             <span className="sidebar-section-label">Projects</span>
-            {projectsExpanded ? (
-              <ChevronDown size={12} />
-            ) : (
-              <ChevronRight size={12} />
-            )}
+            {projectsExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           </button>
-          <button
-            className="sidebar-action-btn"
-            onClick={() => navigate(`/org/${slug}/projects/new`)}
-            title="New project"
-            aria-label="New project"
-          >
-            <Plus size={13} />
-          </button>
+          {canManage && (
+            <button
+              className="sidebar-action-btn"
+              onClick={() => navigate(`/org/${slug}/projects/new`)}
+              title="New project"
+              aria-label="New project"
+            >
+              <Plus size={13} />
+            </button>
+          )}
         </div>
 
         {projectsExpanded && (
@@ -97,19 +112,36 @@ export default function Sidebar({ org }: SidebarProps) {
             {projects.length === 0 && (
               <div className="sidebar-empty">No projects yet</div>
             )}
-            {projects.map((project) => (
-              <NavLink
-                key={project.id}
-                to={`/org/${slug}/projects/${project.key}/board`}
-                className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}
-              >
-                <span className="sidebar-item-icon">
-                  <ProjectDot color={projectColor(project.key)} />
-                </span>
-                <span className="sidebar-item-text">{project.name}</span>
-                <span className="sidebar-item-badge">{project.key}</span>
-              </NavLink>
-            ))}
+            {projects.map((project) => {
+              const isActiveProject = project.key === activeKey
+              return (
+                <div key={project.id} className="sidebar-project-row">
+                  <NavLink
+                    to={`/org/${slug}/projects/${project.key}/board`}
+                    className={({ isActive }) => `sidebar-item sidebar-item--project${isActive ? ' active' : ''}`}
+                  >
+                    <span className="sidebar-item-icon">
+                      <ProjectDot color={projectColor(project.key)} />
+                    </span>
+                    <span className="sidebar-item-text">{project.name}</span>
+                    <span className="sidebar-item-badge">{project.key}</span>
+                  </NavLink>
+                  {/* Settings gear — only visible when project is active + canManage */}
+                  {isActiveProject && canManage && (
+                    <NavLink
+                      to={`/org/${slug}/projects/${project.key}/settings`}
+                      className={({ isActive }) =>
+                        `sidebar-project-settings-btn${isActive ? ' active' : ''}`
+                      }
+                      title="Project settings"
+                      aria-label="Project settings"
+                    >
+                      <SlidersHorizontal size={12} />
+                    </NavLink>
+                  )}
+                </div>
+              )
+            })}
           </>
         )}
       </div>
@@ -124,23 +156,21 @@ export default function Sidebar({ org }: SidebarProps) {
             onClick={() => setWikiExpanded((v) => !v)}
           >
             <span className="sidebar-section-label">Wiki</span>
-            {wikiExpanded ? (
-              <ChevronDown size={12} />
-            ) : (
-              <ChevronRight size={12} />
-            )}
+            {wikiExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           </button>
-          <button
-            className="sidebar-action-btn"
-            onClick={() => {
-              navigate(`/org/${slug}/wiki`)
-              window.dispatchEvent(new CustomEvent('wiki:new-space'))
-            }}
-            title="Wiki"
-            aria-label="Wiki"
-          >
-            <Plus size={13} />
-          </button>
+          {canManage && (
+            <button
+              className="sidebar-action-btn"
+              onClick={() => {
+                navigate(`/org/${slug}/wiki`)
+                window.dispatchEvent(new CustomEvent('wiki:new-space'))
+              }}
+              title="New wiki space"
+              aria-label="New wiki space"
+            >
+              <Plus size={13} />
+            </button>
+          )}
         </div>
 
         {wikiExpanded && (
@@ -151,7 +181,6 @@ export default function Sidebar({ org }: SidebarProps) {
             {wikiSpaces.map((space) => (
               <NavLink
                 key={space.id}
-                // Link directly to the space — WikiLayout reads :spaceId param
                 to={`/org/${slug}/wiki/${space.id}`}
                 className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}
               >
@@ -167,46 +196,35 @@ export default function Sidebar({ org }: SidebarProps) {
 
       <div className="sidebar-divider" />
 
-      {/* ── Settings ──────────────────────────────────────────── */}
+      {/* ── Bottom nav ────────────────────────────────────────── */}
       <div className="sidebar-section">
         <NavLink
           to={`/org/${slug}/settings/members`}
           className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}
         >
-          <span className="sidebar-item-icon">
-            <Users size={15} />
-          </span>
+          <span className="sidebar-item-icon"><Users size={15} /></span>
           <span className="sidebar-item-text">Members</span>
         </NavLink>
 
-        <NavLink
-          to={`/org/${slug}/settings`}
-          end
-          className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}
-        >
-          <span className="sidebar-item-icon">
-            <Settings size={15} />
-          </span>
-          <span className="sidebar-item-text">Settings</span>
-        </NavLink>
+        {canManage && (
+          <NavLink
+            to={`/org/${slug}/settings`}
+            end
+            className={({ isActive }) => `sidebar-item${isActive ? ' active' : ''}`}
+          >
+            <span className="sidebar-item-icon"><Settings size={15} /></span>
+            <span className="sidebar-item-text">Settings</span>
+          </NavLink>
+        )}
       </div>
     </aside>
   )
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
 function ProjectDot({ color }: { color: string }) {
-  return (
-    <Circle
-      size={8}
-      fill={color}
-      stroke={color}
-    />
-  )
+  return <Circle size={8} fill={color} stroke={color} />
 }
 
-// Deterministic color from project key
 const PROJECT_COLORS = [
   '#5E6AD2', '#7C85E0', '#4ADE80', '#60A5FA',
   '#FB923C', '#F87171', '#FCD34D', '#A78BFA',

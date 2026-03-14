@@ -33,7 +33,7 @@ export default function TaskCard({ task, onClick, isDragging = false }: TaskCard
       {/* Footer: labels + assignee */}
       <div className="task-card-footer">
         <div className="task-card-labels">
-          {task.labels.slice(0, 2).map((label) => (
+          {(task.labels ?? []).slice(0, 2).map((label) => (
             <span key={label.id} className="task-label-chip">
               {label.name}
             </span>

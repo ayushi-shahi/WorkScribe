@@ -6,7 +6,7 @@ Register, login, logout, token refresh, password reset, OAuth, me.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 import redis.asyncio as aioredis
@@ -34,16 +34,22 @@ from app.services.oauth_service import (
     verify_google_id_token,
 )
 from app.services.organization_service import OrganizationService
+from app.models.invitation import Invitation
+from app.models.user import User as UserModel
+from datetime import UTC, datetime
+from sqlalchemy import select
+from pydantic import BaseModel
+from pydantic import BaseModel as PydanticBase
 
 router = APIRouter()
 
 
 def get_auth_service(
+    background_tasks: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ) -> AuthService:
-    """Dependency that constructs AuthService."""
-    return AuthService(db=db, redis=redis)
+    return AuthService(db=db, redis=redis, background_tasks=background_tasks)
 
 
 def get_org_service(
@@ -257,21 +263,103 @@ async def oauth_google(
 # ---------------------------------------------------------------------------
 # Accept Invitation — no auth required, token is the credential
 # ---------------------------------------------------------------------------
+class AcceptInviteRequest(PydanticBase):
+    display_name: str | None = None
+    password: str | None = None
 
 @router.post(
     "/invitations/{token}/accept",
-    response_model=OrganizationResponse,
+    response_model=TokenResponse,
     status_code=status.HTTP_200_OK,
     summary="Accept an organization invitation",
 )
 async def accept_invitation(
     token: str,
+    data: AcceptInviteRequest = AcceptInviteRequest(),
+    db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
     service: OrganizationService = Depends(get_org_service),
-) -> OrganizationResponse:
-    """
-    Accept an organization invitation by token.
+) -> TokenResponse:
+    from app.models.invitation import Invitation as Inv
+    from app.models.user import User as U
+    from app.core.security import hash_password
 
-    No Authorization header required. The invitation token is the credential.
-    The invited user must already be registered with the same email.
-    """
-    return await service.accept_invitation_by_token(token)
+    # Get invitation
+    inv_result = await db.execute(select(Inv).where(Inv.token == token))
+    invitation = inv_result.scalar_one_or_none()
+    if invitation is None:
+        raise HTTPException(status_code=404, detail={"code": "INVITE_NOT_FOUND", "message": "Invitation not found"})
+
+    email = invitation.email
+
+    # Check if user exists, if not register them
+    user_result = await db.execute(select(U).where(U.email == email))
+    user = user_result.scalar_one_or_none()
+
+    if user is None:
+        if not data.display_name or not data.password:
+            raise HTTPException(status_code=400, detail={"code": "REGISTRATION_REQUIRED", "message": "display_name and password required for new users"})
+        user = U(
+            email=email,
+            display_name=data.display_name,
+            password_hash=hash_password(data.password),
+            is_active=True,
+            email_verified=True,
+        )
+        db.add(user)
+        await db.flush()
+
+    # Accept invitation
+    await service.accept_invitation_by_token(token)
+
+    return await build_token_response(user=user, redis=redis)
+# ---------------------------------------------------------------------------
+# Get Invitation Details — no auth required
+# ---------------------------------------------------------------------------
+
+
+
+class InviteDetailsResponse(BaseModel):
+    org_name: str
+    org_slug: str
+    role: str
+    email: str
+    inviter_name: str
+
+@router.get(
+    "/invitations/{token}",
+    response_model=InviteDetailsResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Get invitation details by token",
+)
+async def get_invitation_details(
+    token: str,
+    db: AsyncSession = Depends(get_db),
+) -> InviteDetailsResponse:
+    from app.models.organization import Organization
+    from app.models.user import User as U
+
+    result = await db.execute(
+        select(Invitation).where(Invitation.token == token)
+    )
+    invitation = result.scalar_one_or_none()
+
+    if invitation is None or invitation.accepted_at is not None:
+        raise HTTPException(status_code=404, detail={"code": "INVITE_NOT_FOUND", "message": "Invitation not found"})
+
+    if invitation.expires_at < datetime.now(UTC):
+        raise HTTPException(status_code=410, detail={"code": "INVITE_EXPIRED", "message": "Invitation has expired"})
+
+    org_result = await db.execute(select(Organization).where(Organization.id == invitation.org_id))
+    org = org_result.scalar_one()
+
+    inviter_result = await db.execute(select(U).where(U.id == invitation.created_by))
+    inviter = inviter_result.scalar_one_or_none()
+
+    return InviteDetailsResponse(
+        org_name=org.name,
+        org_slug=org.slug,
+        role=invitation.role.value,
+        email=invitation.email,
+        inviter_name=inviter.display_name if inviter else "Someone",
+    )

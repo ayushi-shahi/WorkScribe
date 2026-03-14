@@ -1,8 +1,7 @@
+# WorkScribe — Progress Doc
 
-# WorkScribe — Backend Progress
-
-**Last Updated:** 2026-03-12
-**Latest Commit:** `feat: wiki G4–G6 — Tiptap editor, autosave, save button, new space/page`
+**Last Updated:** 2026-03-14
+**Latest Commit:** `feat: labels API + project settings UI + celery to backgroundtasks migration`
 **Alembic Head:** `d4e5f6a1b2c3` (create_notifications_table)
 **API:** `http://localhost:8001`
 
@@ -21,14 +20,21 @@
 | 5.2   | Performance (Redis Caching) | ✅ Complete & Tested |
 | 6.1   | Task ↔ Doc Linking         | ✅ Complete & Tested |
 | 6.2   | Notifications DB + REST API | ✅ Complete & Tested |
-| 6.3   | Celery dispatch + WebSocket | ✅ Complete & Tested |
+| 6.3   | Celery → BackgroundTasks   | ✅ Complete & Tested |
 | 6.5   | Search                      | ✅ Complete & Tested |
 | 7.1   | Dashboard                   | ✅ Complete & Tested |
 | 7.2   | Security Audit              | ✅ Complete & Tested |
 | 8.1   | Google OAuth                | ✅ Complete & Tested |
 | —    | API Hardening — Gaps 1–5  | ✅ Complete & Tested |
+| —    | Labels API + UI             | ✅ Complete & Tested |
+| J2    | Empty states                | ⬜ Next              |
+| J3    | Error boundaries            | ⬜                   |
+| J4    | Loading skeletons audit     | ⬜                   |
+| J5    | Production build + deploy   | ⬜                   |
+| J6    | Performance optimization    | ⬜                   |
 
-**Backend: 100% complete. Frontend: G6 complete — next: H1 (WebSocket hook).**
+**Backend: 100% complete.**
+**Frontend: All features complete through J1 — next: J2–J6 polish.**
 
 ---
 
@@ -45,7 +51,7 @@
 * Alembic configured with async engine
 * `app/main.py` — FastAPI app, CORS, health check
 * `Dockerfile` — multi-stage, non-root user (`appuser`)
-* `docker-compose.yml` — api, worker, db (PostgreSQL), redis
+* `docker-compose.yml` — api, db (PostgreSQL), redis (worker removed after Celery migration)
 * Docker Compose verified working with health check
 
 ---
@@ -73,22 +79,22 @@
 
 * `app/schemas/auth.py` — all auth request/response schemas
 * `app/core/security.py` — bcrypt password hash, JWT encode/decode
-* `app/workers/celery_app.py` — Celery instance with Redis broker
-* `app/workers/email_tasks.py` — password reset + invitation email tasks
+* `app/workers/email_tasks.py` — plain functions: `send_invitation_email`, `send_password_reset_email` (Gmail SMTP, no Celery)
 * `app/core/dependencies.py` — `get_current_user`, `get_org_member`, `require_role`
 
 ### Endpoints Tested ✅
 
-| Method | Path                                        | Description                          |
-| ------ | ------------------------------------------- | ------------------------------------ |
-| POST   | `/api/v1/auth/register`                   | Register user, return JWT            |
-| POST   | `/api/v1/auth/login`                      | Login, issue access + refresh tokens |
-| POST   | `/api/v1/auth/refresh`                    | Refresh access token                 |
-| POST   | `/api/v1/auth/logout`                     | Blacklist JTI, delete refresh token  |
-| POST   | `/api/v1/auth/forgot-password`            | Queue reset email (always 204)       |
-| POST   | `/api/v1/auth/reset-password`             | Validate token, update password      |
-| GET    | `/api/v1/auth/me`                         | Get current user profile             |
-| POST   | `/api/v1/auth/invitations/{token}/accept` | Accept org invitation                |
+| Method | Path                                        | Description                           |
+| ------ | ------------------------------------------- | ------------------------------------- |
+| POST   | `/api/v1/auth/register`                   | Register user, return JWT             |
+| POST   | `/api/v1/auth/login`                      | Login, issue access + refresh tokens  |
+| POST   | `/api/v1/auth/refresh`                    | Refresh access token                  |
+| POST   | `/api/v1/auth/logout`                     | Blacklist JTI, delete refresh token   |
+| POST   | `/api/v1/auth/forgot-password`            | Queue reset email (always 204)        |
+| POST   | `/api/v1/auth/reset-password`             | Validate token, update password       |
+| GET    | `/api/v1/auth/me`                         | Get current user profile              |
+| GET    | `/api/v1/auth/invitations/{token}`        | Get invite details (org, role, email) |
+| POST   | `/api/v1/auth/invitations/{token}/accept` | Accept org invitation + auto-login    |
 
 ---
 
@@ -113,6 +119,14 @@
 | DELETE | `/api/v1/organizations/{slug}/invitations/{id}`  | Revoke invite                  |
 | PATCH  | `/api/v1/organizations/{slug}/members/{user_id}` | Change role                    |
 | DELETE | `/api/v1/organizations/{slug}/members/{user_id}` | Remove member                  |
+
+### Invite Flow Notes
+
+* Re-invite: existing pending invite is auto-deleted and a fresh one created (no 409)
+* Accept endpoint returns `TokenResponse` (auto-login after accept)
+* New users: must supply `display_name` + `password` in accept body
+* Existing users: just accepts, no extra fields needed
+* Email delivery: Gmail SMTP via `smtplib.SMTP_SSL("smtp.gmail.com", 465)`
 
 ---
 
@@ -245,6 +259,11 @@
 | DELETE | `/api/v1/wiki/pages/{id}`                  | Soft delete (409 if children, ?force=true cascades) |
 | POST   | `/api/v1/wiki/pages/{id}/move`             | Move page in tree                                   |
 
+### Search Bug Fix (2026-03-14)
+
+* `_search_pages` was filtering `Page.is_deleted.is_(False)` — changed to `Page.is_deleted.isnot(True)` to match NULL rows
+* Frontend `searchApi` was returning `res.data` (object) instead of `res.data.results` (array) — fixed in `src/api/endpoints/search.ts`
+
 ---
 
 ## Phase 5.2 — Performance (Redis Caching) ✅
@@ -322,13 +341,26 @@
 
 ---
 
-## Phase 6.3 — Celery Dispatch + WebSocket ✅
+## Phase 6.3 — BackgroundTasks Dispatch + WebSocket ✅
+
+**Migrated from Celery to FastAPI BackgroundTasks on 2026-03-14.**
 
 ### Files
 
 * `app/core/websocket.py` — `ConnectionManager` singleton
-* `app/workers/notification_tasks.py` — `dispatch_notification` Celery task
+* `app/workers/notification_tasks.py` — `dispatch_notification` plain async function (no Celery)
+* `app/workers/email_tasks.py` — `send_invitation_email`, `send_password_reset_email` plain functions (no Celery)
 * `app/routers/websocket.py` — `WS /api/v1/ws?token={jwt}` endpoint
+
+### Migration Notes
+
+* `celery_app.py` deleted
+* `workscribe-worker` container removed from `docker-compose.yml`
+* All three routers (`auth`, `organizations`, `tasks`) inject `BackgroundTasks` as first dependency parameter (before `db` and `redis` — Python requires non-default params first)
+* All three services (`AuthService`, `OrganizationService`, `TaskService`) accept `background_tasks: BackgroundTasks | None = None` in `__init__`
+* `_queue_notification()` in `task_service.py` takes `background_tasks` as first arg; all call sites pass `self.background_tasks`
+* Redis kept for caching + rate limiting only (not as Celery broker)
+* Tradeoff: if API process crashes mid-task, background task is lost — acceptable for this use case
 
 ### Notification Triggers
 
@@ -337,6 +369,12 @@
 | Task created with assignee    | Assignee  | `assignee_id != reporter_id`                        |
 | Task updated to Done status   | Reporter  | `new_status.category == done AND reporter != actor` |
 | @mention in comment body_json | Mentioned | Parsed from Tiptap mention nodes, skips self          |
+
+### Tested ✅
+
+* `TASK_ASSIGNED` notification delivered to assignee on task create ✅
+* `POST /auth/forgot-password` queues reset email via BackgroundTasks ✅
+* `POST /organizations/{slug}/invite` queues invitation email via BackgroundTasks ✅
 
 ---
 
@@ -428,39 +466,60 @@ Default `limit=50`, max `limit=100`, enforced via `Query(ge=1, le=100)`.
 * Returns tasks where `sprint_id IS NULL`
 * Paginated (default limit=25, max=100)
 * Same filters as board: status, assignee, priority, type, search
-* Returns `BacklogListResponse` — same shape as `TaskListResponse`
 * No cache — always hits DB
 
 ### Gap 3 — Wiki Space Delete Guard ✅
 
-`DELETE /api/v1/wiki/spaces/{space_id}` now returns:
-
 * `409 SPACE_NOT_EMPTY` if space has any non-deleted pages
-* Message includes page count: `"Space contains X page(s). Delete all pages first."`
-* No force flag — user must delete pages manually
+* Message includes page count
 
 ### Gap 4 — Page Delete Child Guard ✅
 
-`DELETE /api/v1/wiki/pages/{page_id}` now:
-
-* Returns `409 PAGE_HAS_CHILDREN` if page has children and `?force=true` not set
-* Message: `"Page has X child page(s). Use ?force=true to delete with all children."`
+* `409 PAGE_HAS_CHILDREN` if page has children and `?force=true` not set
 * `?force=true` → cascade soft-deletes page + all descendants
-* Leaf pages (no children) delete normally without `?force=true`
 
 ### Gap 5 — Sprint Task Assignment Endpoints ✅
-
-Replaced the `PATCH /tasks/{id}` workaround with proper dedicated endpoints.
 
 | Method | Path                                     | Description            |
 | ------ | ---------------------------------------- | ---------------------- |
 | POST   | `/api/v1/sprints/{id}/tasks`           | Assign task to sprint  |
 | DELETE | `/api/v1/sprints/{id}/tasks/{task_id}` | Remove task → backlog |
 
-* `409 TASK_ALREADY_IN_SPRINT` on duplicate assignment
-* `400 TASK_NOT_IN_SPRINT` on remove when not assigned
-* Validates task belongs to same project as sprint
-* Invalidates board cache on both operations
+---
+
+## Labels API + UI ✅
+
+**Completed 2026-03-14.**
+
+### New Files
+
+* `app/routers/labels.py`
+* `frontend/src/pages/ProjectSettingsPage.tsx`
+* `frontend/src/styles/projectSettings.css`
+
+### Backend Endpoints Tested ✅
+
+| Method | Path                                                             | Description            |
+| ------ | ---------------------------------------------------------------- | ---------------------- |
+| GET    | `/api/v1/organizations/{slug}/projects/{id}/labels`            | List project labels    |
+| POST   | `/api/v1/organizations/{slug}/projects/{id}/labels`            | Create label           |
+| DELETE | `/api/v1/organizations/{slug}/projects/{id}/labels/{label_id}` | Delete label           |
+| POST   | `/api/v1/tasks/{id}/labels/{label_id}`                         | Assign label to task   |
+| DELETE | `/api/v1/tasks/{id}/labels/{label_id}`                         | Remove label from task |
+
+### Frontend ✅
+
+* Label chips on TaskCard — real data, colored correctly
+* Label filter on board toolbar — filters board client-side
+* Label multi-select in CreateTaskModal — works end-to-end
+* ProjectSettingsPage — create labels with color picker (presets + hex), delete labels
+* Sidebar gear icon links to project settings (owner/admin only)
+* Route: `projects/:key/settings` → `ProjectSettingsPage`
+
+### Notes
+
+* FastAPI 204 endpoints: use `return Response(status_code=204)` from function body — `response_class=Response` on decorator does not work with this FastAPI version
+* Labels included in task list responses — use `task.labels ?? []` as fallback
 
 ---
 
@@ -496,12 +555,12 @@ Replaced the `PATCH /tasks/{id}` workaround with proper dedicated endpoints.
 * Business logic only in service layer
 * Async SQLAlchemy 2.0 (`select()`, `await db.execute()`)
 * Migrations use raw `op.execute()` SQL to avoid SQLAlchemy enum conflicts
-* Slug-less endpoints use `get_current_user` + membership lookup in service
 * Slug endpoints use `get_org_member` or `require_role` dependency
 * `get_org_member` returns `tuple[Organization, OrgMember]` — unpack as `org, member = org_member`
 * Soft delete: projects (`is_archived`), pages (`is_deleted`)
 * All errors: `{"code": "ERROR_CODE", "message": "..."}`
-* Celery tasks: always `asyncio.new_event_loop()` — never `asyncio.run()`
+* BackgroundTasks: inject as first (non-default) parameter in dependency functions — before `db` and `redis`
+* Services accept `background_tasks: BackgroundTasks | None = None` in `__init__`
 * Rate limiting: 100 req/min per IP, exempt: `/health`
 * `app.state.redis` — shared Redis connection from lifespan
 * OAuth users: `password_hash=NULL`
@@ -509,22 +568,27 @@ Replaced the `PATCH /tasks/{id}` workaround with proper dedicated endpoints.
 * Filtered task requests always bypass cache
 * Cache keys: `board:{org_id}:{project_id}` (TTL 30s), `page_tree:{org_id}:{space_id}` (TTL 60s)
 * Cache serialization: `.model_dump_json()` / `.model_validate_json()`
-* Pagination: default `limit=50` for list endpoints, max `limit=100`, enforced via `Query(ge=1, le=100)`
+* Pagination: default `limit=50`, max `limit=100`, enforced via `Query(ge=1, le=100)`
 * Backlog endpoint never cached — always hits DB
 * Sprint task assignment: dedicated endpoints, not PATCH /tasks/{id}
 * Testing: PowerShell `Invoke-RestMethod` against `http://localhost:8001`
+* Search response shape: `{ results: [], total: N, q: "" }` — frontend must use `res.data.results`
+* Page is_deleted filter: use `isnot(True)` not `is_(False)` to handle NULL rows
+* 204 endpoints: return `Response(status_code=204)` from function body — never use `response_class=Response` on decorator
 
 ---
 
 ## Test Users (local dev)
 
-| Email              | Password    | Role               | Notes                         |
-| ------------------ | ----------- | ------------------ | ----------------------------- |
-| test@example.com   | password123 | Owner of test-org  | Google identity linked in 8.1 |
-| member@example.com | password123 | Member of test-org |                               |
-| brandnew@gmail.com | —          | No org             | OAuth-only, created in 8.1    |
-| inactive@gmail.com | —          | No org             | is_active=False, OAuth only   |
-| noorg@example.com  | password123 | No org             | Created during gap testing    |
+| Email                         | Password        | Role               | Notes                         |
+| ----------------------------- | --------------- | ------------------ | ----------------------------- |
+| test@example.com              | password123     | Owner of test-org  | Google identity linked in 8.1 |
+| member@example.com            | password123     | Member of test-org |                               |
+| brandnew@gmail.com            | —              | No org             | OAuth-only, created in 8.1    |
+| inactive@gmail.com            | —              | No org             | is_active=False, OAuth only   |
+| noorg@example.com             | password123     | No org             | Created during gap testing    |
+| ayushishahi14072004@gmail.com | password123     | Member of test-org | Joined via invite 2026-03-13  |
+| 23cse062@jssaten.ac.in        | (set at accept) | Member of test-org | Joined via invite 2026-03-13  |
 
 ---
 
@@ -552,7 +616,7 @@ Replaced the `PATCH /tasks/{id}` workaround with proper dedicated endpoints.
 
 # Frontend Progress
 
-Last Updated: 2026-03-12
+Last Updated: 2026-03-14
 Backend: 100% complete
 Frontend location: /frontend
 Dev server: http://localhost:5173
@@ -560,54 +624,63 @@ Backend API: http://localhost:8001/api/v1
 
 ### Frontend Status
 
-| Phase  | Task                                                              | Status  |
-| ------ | ----------------------------------------------------------------- | ------- |
-| A1     | Vite + React 19 + TypeScript setup                                | ✅ Done |
-| A2     | CSS design tokens (tokens.css + globals.css)                      | ✅ Done |
-| A3     | Axios client (src/api/client.ts)                                  | ✅ Done |
-| A4     | Auth Zustand store (src/stores/authStore.ts)                      | ✅ Done |
-| A5     | React Router shell — all routes stubbed                          | ✅ Done |
-| A6     | ProtectedRoute + redirect logic                                   | ✅ Done |
-| B1     | /login page                                                       | ✅ Done |
-| B2     | /register page                                                    | ✅ Done |
-| B3     | /forgot-password + /reset-password                                | ✅ Done |
-| B4     | Token refresh interceptor (full)                                  | ✅ Done |
-| B5     | Org creation wizard                                               | ✅ Done |
-| B6     | Invitation accept page                                            | ✅ Done |
-| C1     | OrgLayout — topbar + sidebar + main                              | ✅ Done |
-| C2     | Sidebar (projects, wiki spaces, nav)                              | ✅ Done |
-| C3     | Topbar (logo, org switcher, search, notif bell, avatar)           | ✅ Done |
-| D1     | BoardPage — fetch tasks grouped by status                        | ✅ Done |
-| D2     | BoardColumn component                                             | ✅ Done |
-| D3     | TaskCard component                                                | ✅ Done |
-| D4     | Drag within column (reorder)                                      | ✅ Done |
-| D5     | Drag between columns (move + optimistic update + rollback)        | ✅ Done |
-| D6     | Board filter toolbar (Assignee / Priority / Label multi-select)   | ✅ Done |
-| D7     | CreateTaskModal (full field set, invalidates board on success)    | ✅ Done |
-| D8     | Quick-add inline (per-column inline input, Enter/Escape)          | ✅ Done |
-| E1     | TaskPanel slide-in shell + URL param sync                         | ✅ Done |
-| E2     | Inline-editable fields (dropdowns for status, priority, assignee) | ✅ Done |
-| E3     | Tiptap description editor + localStorage autosave                 | ✅ Done |
-| E4     | Comments + delete own comment + optimistic add                    | ✅ Done |
-| E5     | Activity log timeline                                             | ✅ Done |
-| E6     | Linked docs                                                       | ✅ Done |
-| E7     | Subtasks                                                          | ✅ Done |
-| F1     | BacklogPage (sprint sections + backlog section + inline create)   | ✅ Done |
-| F2     | BacklogTaskRow component                                          | ✅ Done |
-| F3     | Drag backlog ↔ sprint                                            | ✅ Done |
-| F4     | Create Sprint modal                                               | ✅ Done |
-| F5     | Start/Complete Sprint modals                                      | ✅ Done |
-| G1     | WikiLayout (3-column shell, spaces list, NewSpaceModal)           | ✅ Done |
-| G2     | PageTree (recursive dnd-kit tree, options menu, inline create)    | ✅ Done |
-| G3     | PageEditorPage shell (breadcrumb, editable title, meta row)       | ✅ Done |
-| G4     | Tiptap editor full                                                | ✅ Done |
-| G5     | Autosave + Save button + unsaved indicator                        | ✅ Done |
-| G6     | New Space + New Page wired end-to-end                             | ✅ Done |
-| H1     | useWebSocket hook                                                 | ⬜ Next |
-| H2     | Notification bell + panel                                         | ⬜      |
-| H3     | CommandPalette (Cmd+K)                                            | ⬜      |
-| I1     | DashboardPage                                                     | ⬜      |
-| J1–J5 | Polish + Deploy                                                   | ⬜      |
+| Phase | Task                                                              | Status  |
+| ----- | ----------------------------------------------------------------- | ------- |
+| A1    | Vite + React 19 + TypeScript setup                                | ✅ Done |
+| A2    | CSS design tokens (tokens.css + globals.css)                      | ✅ Done |
+| A3    | Axios client (src/api/client.ts)                                  | ✅ Done |
+| A4    | Auth Zustand store (src/stores/authStore.ts)                      | ✅ Done |
+| A5    | React Router shell — all routes stubbed                          | ✅ Done |
+| A6    | ProtectedRoute + redirect logic                                   | ✅ Done |
+| B1    | /login page                                                       | ✅ Done |
+| B2    | /register page                                                    | ✅ Done |
+| B3    | /forgot-password + /reset-password                                | ✅ Done |
+| B4    | Token refresh interceptor (full)                                  | ✅ Done |
+| B5    | Org creation wizard                                               | ✅ Done |
+| B6    | Invitation accept page                                            | ✅ Done |
+| C1    | OrgLayout — topbar + sidebar + main                              | ✅ Done |
+| C2    | Sidebar (projects, wiki spaces, nav)                              | ✅ Done |
+| C3    | Topbar (logo, org switcher, search, notif bell, avatar)           | ✅ Done |
+| D1    | BoardPage — fetch tasks grouped by status                        | ✅ Done |
+| D2    | BoardColumn component                                             | ✅ Done |
+| D3    | TaskCard component                                                | ✅ Done |
+| D4    | Drag within column (reorder)                                      | ✅ Done |
+| D5    | Drag between columns (move + optimistic update + rollback)        | ✅ Done |
+| D6    | Board filter toolbar (Assignee / Priority / Label multi-select)   | ✅ Done |
+| D7    | CreateTaskModal (full field set, invalidates board on success)    | ✅ Done |
+| D8    | Quick-add inline (per-column inline input, Enter/Escape)          | ✅ Done |
+| E1    | TaskPanel slide-in shell + URL param sync                         | ✅ Done |
+| E2    | Inline-editable fields (dropdowns for status, priority, assignee) | ✅ Done |
+| E3    | Tiptap description editor + localStorage autosave                 | ✅ Done |
+| E4    | Comments + delete own comment + optimistic add                    | ✅ Done |
+| E5    | Activity log timeline                                             | ✅ Done |
+| E6    | Linked docs                                                       | ✅ Done |
+| E7    | Subtasks                                                          | ✅ Done |
+| F1    | BacklogPage (sprint sections + backlog section + inline create)   | ✅ Done |
+| F2    | BacklogTaskRow component                                          | ✅ Done |
+| F3    | Drag backlog ↔ sprint                                            | ✅ Done |
+| F4    | Create Sprint modal                                               | ✅ Done |
+| F5    | Start/Complete Sprint modals                                      | ✅ Done |
+| G1    | WikiLayout (3-column shell, spaces list, NewSpaceModal)           | ✅ Done |
+| G2    | PageTree (recursive dnd-kit tree, options menu, inline create)    | ✅ Done |
+| G3    | PageEditorPage shell (breadcrumb, editable title, meta row)       | ✅ Done |
+| G4    | Tiptap editor full                                                | ✅ Done |
+| G5    | Autosave + Save button + unsaved indicator                        | ✅ Done |
+| G6    | New Space + New Page wired end-to-end                             | ✅ Done |
+| H1    | useWebSocket hook                                                 | ✅ Done |
+| H2    | Notification bell + panel                                         | ✅ Done |
+| H3    | CommandPalette (Cmd+K)                                            | ✅ Done |
+| I1    | DashboardPage                                                     | ✅ Done |
+| I2    | MembersPage                                                       | ✅ Done |
+| I3    | OrgSettingsPage                                                   | ✅ Done |
+| J1    | RBAC audit + fixes                                                | ✅ Done |
+| —    | Labels API + frontend + ProjectSettingsPage                       | ✅ Done |
+| —    | Celery → BackgroundTasks migration                               | ✅ Done |
+| J2    | Empty states                                                      | ⬜ Next |
+| J3    | Error boundaries                                                  | ⬜      |
+| J4    | Loading skeletons audit                                           | ⬜      |
+| J5    | Production build + deploy                                         | ⬜      |
+| J6    | Performance optimization                                          | ⬜      |
 
 ---
 
@@ -655,180 +728,95 @@ Backend API: http://localhost:8001/api/v1
 * AssigneeDropdown: searchable member picker, lazy-fetches members only when opened, supports unassign (assignee_id: null)
 * All three use useClickOutside hook, close on Escape
 * Mutations: statusMutation, priorityMutation, assigneeMutation — each invalidates ['board'] and ['backlog', slug]
-* New CSS in taskPanel.css: .tp-dropdown-wrap, .tp-field-btn, .tp-dropdown, .tp-dropdown-item, etc.
 
 #### E3 — Tiptap Description Editor
 
-* npm install @tiptap/react @tiptap/starter-kit @tiptap/extension-placeholder
 * useEditor with StarterKit + Placeholder extension
-* Toolbar: Bold, Italic, Bullet list, Numbered list — each toggles active state
 * Draft autosaved to localStorage key task-desc-draft:{resolvedId} on every keystroke
 * Debounced API save (1500ms) via updateTaskApi with description_json
-* On successful API save: localStorage draft cleared
-* On task load: prefers localStorage draft over server content (handles panel close/reopen mid-edit)
-* Save status indicator: "Saving…" → "Saved" shown in toolbar
-* Editor content in .tp-editor-wrap, placeholder via .is-editor-empty:first-child::before
+* On task load: prefers localStorage draft over server content
 
 #### E4 — Comments
 
-* Display comments list with author avatar, name, date
 * Optimistic add comment (appears instantly, rolls back on error)
 * Delete own comment (optimistic remove, trash icon on hover)
 * Cmd+Enter submit
 * Backend expects `{ body_json: <TiptapJSON> }` not `{ content: string }`
-* Backend returns `body_json` (Tiptap JSON) — extractCommentText() helper parses to plain text
 * isOwn uses `c.author_id` (top-level field), not `c.author.id` (nested)
-* Optimistic comment shape includes `author_id` at top level to match Comment interface
-* CSS hover: both `.task-comment:hover` and `.task-comment-body:hover` selectors needed
+* Optimistic comment shape includes `author_id` at top level
 
 #### E5 — Activity Log
 
-* ActivitySection component rendered at bottom of TaskPanel
-* Fetches GET /tasks/{id}/activity → { activities, total, skip, limit }
 * Backend action field is uppercase: `FIELD_UPDATED`, `TASK_CREATED`, `COMMENT_ADDED`, etc.
-* `old_value` / `new_value` are objects with the changed field as the key (e.g. `{ "priority": "high" }`) — field name extracted via `Object.keys(nv)[0]`
-* `formatActivity(entry, statuses, members)` resolves UUIDs to human-readable names:
-  * `status_id` → looked up in `statuses` array (already in scope)
-  * `assignee_id` → looked up in org members (fetched lazily, same query key as AssigneeDropdown so usually cached)
-* ActivitySection accepts `statuses` and `slug` props; fetches members internally via `['members', slug]` query
-* Produces strings like: "changed priority from "high" to "medium"", "changed status from "To Do" to "In Progress"", "set assignee to "Member User"", "created task "Cache invalidation test""
+* `old_value` / `new_value` are objects keyed by field name — extracted via `Object.keys(nv)[0]`
+* `formatActivity(entry, statuses, members)` resolves UUIDs to human-readable names
 
 #### E6 — Linked Docs
 
-* New file: `src/api/endpoints/links.ts` — getTaskLinksApi, createTaskLinkApi, deleteTaskLinkApi
-* New file: `src/api/endpoints/activity.ts` — getActivityApi, ActivityEntry, ActivityListResponse
 * Backend returns `{ data: [], total: 0 }` for links — unwrapped as `res.data.data ?? []`
-* LinkDocModal: fixed-position modal with page search (debounced 300ms), filters already-linked pages
-* Search requires ≥1 character; uses searchApi with type='page'
-* Unlink: optimistic removal with rollback, X button visible on hover
-* Escape closes modal; modal overlay click also closes
-* CSS: .tp-section-header, .tp-links-list, .tp-link-item, .tp-link-modal, etc. appended to taskPanel.css
+* LinkDocModal: page search (debounced 300ms), filters already-linked pages
 
 #### E7 — Subtasks
 
-* `getSubtasksApi(slug, projectId, parentTaskId)` — fetches with `type=subtask` filter, then client-side filters by `parent_task_id` (backend ignores `parent_task_id` as query param)
-* `parent_task_id: string | null` added to `Task` interface in `src/types/index.ts`
-* `SubtasksSection` component in `TaskPanel.tsx` — props: `{ parentTaskId, slug, projectId, statuses }`
-* Shows `SUBTASKS (done/total)` count in header + thin green progress bar
+* `getSubtasksApi` fetches with `type=subtask` filter, then client-side filters by `parent_task_id`
 * `doneCount` checks both `task.status?.category === 'done'` AND `task.status_id === doneStatusId`
-* Toggle done: optimistic update sets both `status_id` and `status` object; rollback on error
 * Subtasks hidden from board and backlog via `.filter((t) => t.type !== 'subtask')`
-* Query key: `['subtasks', parentTaskId]`
 
-#### F1 — BacklogPage
+#### F1–F5 — Backlog + Sprints ✅
 
-* Three collapsible sections: Active Sprints → Planned Sprints → Backlog (no sprint)
-* SprintSection: shows Active/Planned badge, date range, progress bar (active only), task count
-* BacklogSection: always shown at bottom; tasks with sprint_id IS NULL via getBacklogApi
-* TaskRow: priority dot, task_id (mono), title, status chip, assignee avatar; done tasks have strikethrough
-* task.status?.category optional chain — API does not always embed full status object
-* Inline create row at bottom of each section; sprint tasks pass sprint_id to createTaskApi
-* Clicking task row navigates to board?task=APP-X to open TaskPanel
-* Board/Backlog tab switcher in page header using NavLink
-* Added getBacklogApi to src/api/endpoints/tasks.ts
-* Query keys: ['backlog', slug, projectId] for all tasks, ['backlog-tasks', slug, projectId] for pure backlog
-
-#### F2 — BacklogTaskRow Component
-
-* Extracted to src/components/backlog/BacklogTaskRow.tsx
-* Props: { task, sprint?, onClick }
-* Renders: priority dot, task ID (mono), title, sprint badge (.bl-sprint-badge--row), status chip, assignee avatar
-* Done tasks (status.category === 'done') get strikethrough on ID + title
-* Reused across SprintSection and BacklogSection
-
-#### F3 — Drag Backlog ↔ Sprint
-
-* dnd-kit DndContext wraps entire BacklogPage, PointerSensor with distance: 8
-* Each section body is DroppableSectionBody (useDroppable + SortableContext combined)
-* Each row wrapped in SortableBacklogRow (useSortable, opacity 0.4 while dragging)
-* Section IDs: sprint:{sprintId} or backlog
-* Cross-section drag: calls addTaskToSprintApi or removeTaskFromSprintApi with optimistic update + rollback
-* Same-section drag: calls bulkUpdatePositionsApi, optimistic reorder
-* DragOverlay ghost card with slight rotation
-
-#### F4 — Create Sprint Modal
-
-* src/components/backlog/CreateSprintModal.tsx
-* Fields: name (required), start date (optional), end date (optional)
-* Validation: name required, end date must be after start date
-* API: createSprintApi → POST /organizations/{slug}/projects/{id}/sprints
-* On success: invalidates ['sprints', slug, projectId], toast, closes modal
-
-#### F5 — Start/Complete Sprint Modals
-
-* src/components/backlog/StartSprintModal.tsx — shows sprint info + task count, confirms start
-* src/components/backlog/CompleteSprintModal.tsx — shows incomplete task count, radio options: move to backlog or to a specific planned sprint
-* startSprintApi → POST /sprints/{id}/start; completeSprintApi → POST /sprints/{id}/complete with body { move_incomplete_to?: string }
-* On success: invalidates ['sprints', slug], ['backlog', slug], ['backlog-tasks', slug], ['board', slug]
+* Three collapsible sections: Active Sprints → Planned Sprints → Backlog
+* Drag-and-drop between sections via dnd-kit
+* SprintSection: Active/Planned badge, date range, progress bar (active only)
+* CompleteSprintModal: move incomplete tasks to backlog or specific planned sprint
 * Backend returns 409 if another sprint already active — shown as error toast
 
-#### G1 — WikiLayout ✅
+#### G1–G6 — Wiki ✅
 
-* 3-column shell: Col 1 (200px) spaces list, Col 2 (240px) page tree, Col 3 (flex: 1) editor via `<Outlet>`
-* `wiki:new-space` and `wiki:new-page` custom events fired on `window` for decoupled triggering
-* WikiLayout reads `:spaceId` from `useParams`; passes `{ spaces, pageTree, activeSpace }` to children via `useOutletContext`
-* Sidebar wiki links point to `/org/:slug/wiki/:spaceId`
-* `NewSpaceModal` — emoji + name fields; `nameToKey()` auto-derives `key` (uppercase, alphanumeric, max 10 chars); POST to backend
-* Route structure: `/org/:slug/wiki` → index (WikiHomePage), `/org/:slug/wiki/:spaceId` → WikiHomePage (space context), `/org/:slug/wiki/:spaceId/:pageId` → PageEditorPage
+* 3-column shell: spaces list (200px), page tree (240px), editor (flex: 1)
+* Recursive dnd-kit page tree with options menu (Rename / New child / Delete)
+* Tiptap editor: H1–H3, bold, italic, underline, strike, code, lists, blockquote, link, table, slash commands
+* Autosave (1500ms debounce) + manual Save button (amber when dirty) + Cmd/Ctrl+S
+* localStorage draft: `page:{pageId}` — draft > server content on load
+* Tab title: `• WorkScribe` when unsaved, resets on save
+* Tiptap table extensions must use named imports `{ Table }` not default imports
 
-#### G2 — PageTree ✅
+#### H1–H3 — Real-time + Search ✅
 
-* Recursive tree with single `DndContext` at root, `SortableContext` per level
-* `DragOverlay` ghost with `rotate(1.5deg)`
-* Each row: chevron, FileText icon, NavLink title, `···` options button
-* Options menu: Rename / New child page / Delete (guards against deleting pages that have children)
-* `menuOpen` state drives `.wiki-tree-item-row--menu-open` class (avoids CSS `:has()` for broader compatibility)
-* Active route highlighted via NavLink `active` class + brand left border
+* useWebSocket hook: auto-reconnects, dispatches to React Query + Zustand
+* Notification bell with unread badge, slide-down panel, mark read
+* CommandPalette (Cmd+K): tasks + pages search, keyboard nav, recent items from localStorage
 
-#### G3 — PageEditorPage Shell ✅
+#### I1–I3 — Dashboard / Members / Settings ✅
 
-* Breadcrumb — `Space name › Page title`; space name is a clickable link back to the space root
-* Editable title — `<textarea>` that auto-resizes; 800ms debounced save while typing + immediate save on blur
-* Meta row — avatar + "Edited X ago" via `date-fns formatDistanceToNow`; save indicator inline
-* Editor mount area — `id="wiki-editor-mount"` div; G4 mounts Tiptap here
+* DashboardPage: stats row, active sprints, quick actions, recent docs, activity feed
+* MembersPage: member list, invite form (owner/admin only), remove member
+* OrgSettingsPage: name/slug edit, delete org, access-denied screen for members
 
-#### G4 — Tiptap Wiki Editor ✅
+#### J1 — RBAC Audit ✅
 
-* New file: `src/components/wiki/WikiEditor.tsx`
-* Packages added: `@tiptap/extension-underline`, `@tiptap/extension-link`, `@tiptap/extension-table`, `@tiptap/extension-table-row`, `@tiptap/extension-table-cell`, `@tiptap/extension-table-header`
-* All 4 table packages use named imports `{ Table }` not default imports — required for this version
-* Extensions: StarterKit (H1/H2/H3, bold, italic, strike, code, codeBlock, blockquote, lists, hr), Underline, Link, Table+Row+Header+Cell, Placeholder
-* Toolbar: Undo/Redo · H1/H2/H3 · Bold/Italic/Underline/Strike/InlineCode · BulletList/OrderedList/Blockquote/CodeBlock · Link (popover) · Table · Divider
-* Link popover: inline input, Apply button, Remove button (shown when link already set)
-* Slash command menu: triggered by typing `/` on an empty line; 9 commands; arrow key navigation + Enter to select + Esc to close; filters by typed query
-* Slash detection via `editor.view.dom` keydown listener guarded by `editor.isEditable` + try/catch to avoid "view not mounted" crash
-* Table imports must be named `{ Table }` etc. — default imports throw SyntaxError in Vite
-* `WikiEditorHandle` ref interface: `getJSON()`, `isEmpty()`, `focus()` — exposed via `forwardRef` + `useImperativeHandle`
-* localStorage draft: `page:{pageId}` — loaded on mount (draft > server content), saved on every keystroke, cleared on successful API save
-* `onChange` callback fires on every editor update with full Tiptap JSON
-* Page navigation: `useEffect` on `pageId` change reloads content and resets slash/link state
-* `onReady` callback fires once after editor mounts — available for G5 integration
+Role check pattern:
 
-#### G5 — Autosave + Save Button + Unsaved Indicator ✅
+```tsx
+const members = Array.isArray(rawMembers) ? rawMembers : (rawMembers?.members ?? [])
+const currentMember = members.find(m => m.user_id === currentUser?.id)
+const canManage = currentMember?.role === 'owner' || currentMember?.role === 'admin'
+```
 
-* Manual **Save button** in meta row — grey/disabled when clean, **amber highlighted** when unsaved changes exist
-* **Cmd/Ctrl+S** keyboard shortcut saves immediately, cancels pending debounce timer
-* **Tab title** changes to `• WorkScribe` when dirty, resets to `WorkScribe` on save or page navigation
-* **1500ms debounced autosave** on every editor change via `handleEditorChange` callback
-* `isDirty` state: set true on editor change, false on successful save
-* `isSaving` state: set true when mutation fires, false on success/error
-* `savedFlash` state: true for 2500ms after successful save → shows "Saved" indicator
-* On save success: `clearDraft(pageId)` removes localStorage draft, invalidates `['page', pageId]`
-* Dirty state + save indicator reset when navigating to a different page (`pageId` changes)
-* `contentMutation` keeps `isDirty=true` on error so user can retry
-* CSS: `.wiki-save-btn` (base), `.wiki-save-btn--dirty` (amber), `.wiki-page-save-indicator--saved` (green, no pulse)
+| Component       | What's hidden from members                                 |
+| --------------- | ---------------------------------------------------------- |
+| Sidebar         | `+ New Project`,`+ New Wiki Space`,`Settings`link    |
+| MembersPage     | Invite form, Remove (X) button                             |
+| OrgSettingsPage | Entire page → "Access restricted" screen                  |
+| WikiLayout      | `+ New Space`button                                      |
+| BacklogPage     | `New Sprint`,`Start Sprint`,`Complete Sprint`buttons |
 
-#### G6 — New Space + New Page ✅
+#### Labels + ProjectSettingsPage ✅
 
-* Sidebar `+` button next to "Wiki" now fires `window.dispatchEvent(new CustomEvent('wiki:new-space'))` in addition to navigating to `/wiki` — previously just navigated
-* `wiki:new-space` event already listened for in `WikiLayout` and opens `NewSpaceModal`
-* `NewSpaceModal` in `WikiLayout`: emoji + name fields, auto-derives key via `nameToKey()`, POST to backend, navigates to new space on success
-* `+` button in tree header (`WikiLayout`) sets `newPageParent = null` → shows `InlineNewPage` at root level
-* `InlineNewPage` component: Enter to confirm, Escape/blur-with-empty to cancel, disabled during loading
-* `createPageMutation` on confirm: POST `/wiki/spaces/{id}/pages`, invalidates `['page-tree', spaceId]`, navigates to new page
-* Child page creation via `···` options menu → "New child page" → sets `newPageParent = node.id`
-* Rename via `RenamePageModal` triggered from options menu
-* Delete guards: if page has children, shows toast error; otherwise `confirm()` dialog before DELETE
+* `getLabelsApi` unwraps `res.data.labels` (backend returns `{ labels, total }`)
+* `createLabelApi`, `deleteLabelApi`, `assignLabelToTaskApi`, `removeLabelFromTaskApi` in `tasks.ts`
+* Label chips on TaskCard use `task.labels ?? []`
+* ProjectSettingsPage: color picker with presets, live preview chip, create/delete labels
+* Sidebar gear icon (owner/admin only) links to `/projects/:key/settings`
 
 ---
 
@@ -837,75 +825,47 @@ Backend API: http://localhost:8001/api/v1
 ```
 frontend/src/
 ├── api/
-│   ├── client.ts                  ✅ Axios + silent refresh interceptor
+│   ├── client.ts
 │   └── endpoints/
-│       ├── auth.ts                ✅
-│       ├── organizations.ts       ✅
-│       ├── projects.ts            ✅
-│       ├── tasks.ts               ✅
-│       ├── comments.ts            ✅
-│       ├── links.ts               ✅
-│       ├── activity.ts            ✅
-│       ├── search.ts              ✅
-│       └── wiki.ts                ✅
+│       ├── auth.ts, organizations.ts, projects.ts
+│       ├── tasks.ts          ✅ labels API added
+│       ├── comments.ts, links.ts, activity.ts
+│       ├── search.ts         ✅ res.data.results fix
+│       └── wiki.ts
 ├── stores/
-│   ├── authStore.ts               ✅
-│   └── uiStore.ts                 ✅
+│   ├── authStore.ts, uiStore.ts
 ├── hooks/
-│   └── useBoardDnd.ts             ✅
+│   └── useBoardDnd.ts
 ├── lib/
-│   └── taskHelpers.ts             ✅
+│   └── taskHelpers.ts
 ├── styles/
-│   ├── tokens.css                 ✅
-│   ├── globals.css                ✅
-│   ├── auth.css                   ✅
-│   ├── wizard.css                 ✅
-│   ├── layout.css                 ✅
-│   ├── board.css                  ✅
-│   ├── taskPanel.css              ✅
-│   ├── backlog.css                ✅
-│   └── wiki.css                   ✅ G1–G6 complete
+│   ├── tokens.css, globals.css, auth.css, wizard.css
+│   ├── layout.css            ✅ sidebar project settings btn
+│   ├── board.css, taskPanel.css, backlog.css, wiki.css
+│   ├── projectSettings.css   ✅ new
+│   ├── members.css           ✅ new
+│   └── settings.css          ✅ new
 ├── types/
-│   └── index.ts                   ✅
+│   └── index.ts
 ├── pages/
-│   ├── LoginPage.tsx              ✅
-│   ├── RegisterPage.tsx           ✅
-│   ├── ForgotPasswordPage.tsx     ✅
-│   ├── ResetPasswordPage.tsx      ✅
-│   ├── OrgCreatePage.tsx          ✅
-│   ├── AcceptInvitePage.tsx       ✅
-│   ├── DashboardPage.tsx          ⬜ stub
-│   ├── BoardPage.tsx              ✅
-│   ├── BacklogPage.tsx            ✅
-│   ├── WikiHomePage.tsx           ✅
-│   ├── PageEditorPage.tsx         ✅ G3+G4+G5 complete
-│   ├── OrgSettingsPage.tsx        ⬜ stub
-│   ├── MembersPage.tsx            ⬜ stub
-│   └── NotFoundPage.tsx           ✅
+│   ├── LoginPage, RegisterPage, ForgotPasswordPage, ResetPasswordPage
+│   ├── OrgCreatePage, AcceptInvitePage
+│   ├── DashboardPage, BoardPage, BacklogPage
+│   ├── WikiHomePage, PageEditorPage
+│   ├── OrgSettingsPage, MembersPage
+│   ├── ProjectSettingsPage   ✅ new — labels management
+│   └── NotFoundPage
 ├── layouts/
-│   ├── OrgLayout.tsx              ✅
-│   └── WikiLayout.tsx             ✅ G1+G2+G6 complete
+│   ├── OrgLayout.tsx, WikiLayout.tsx
 ├── components/
-│   ├── ProtectedRoute.tsx         ✅
-│   ├── layout/
-│   │   ├── Sidebar.tsx            ✅ G6: wiki + button fires wiki:new-space event
-│   │   └── Topbar.tsx             ✅
-│   ├── board/
-│   │   ├── TaskCard.tsx           ✅
-│   │   ├── SortableTaskCard.tsx   ✅
-│   │   ├── BoardColumn.tsx        ✅
-│   │   └── CreateTaskModal.tsx    ✅
-│   ├── backlog/
-│   │   ├── BacklogTaskRow.tsx     ✅
-│   │   ├── CreateSprintModal.tsx  ✅
-│   │   ├── StartSprintModal.tsx   ✅
-│   │   └── CompleteSprintModal.tsx ✅
-│   ├── wiki/
-│   │   ├── PageTree.tsx           ✅ G2+G6 complete
-│   │   └── WikiEditor.tsx         ✅ G4 complete
-│   └── panel/
-│       └── TaskPanel.tsx          ✅ E2–E7 complete
-└── App.tsx                        ✅
+│   ├── ProtectedRoute.tsx
+│   ├── layout/Sidebar.tsx    ✅ gear icon for project settings
+│   ├── layout/Topbar.tsx
+│   ├── board/TaskCard, SortableTaskCard, BoardColumn, CreateTaskModal
+│   ├── backlog/BacklogTaskRow, CreateSprintModal, StartSprintModal, CompleteSprintModal
+│   ├── wiki/PageTree, WikiEditor
+│   └── panel/TaskPanel
+└── App.tsx                   ✅ ProjectSettingsPage route added
 ```
 
 ---
@@ -915,57 +875,44 @@ frontend/src/
 * Dark theme only — CSS variables in src/styles/tokens.css, no Tailwind
 * Refresh token stored in sessionStorage key "refresh_token"
 * Token refresh: silent via Axios interceptor, concurrent 401s queued
-* setTokenGetter pattern dropped — useAuthStore imported directly in client.ts
-* sprintId string (not object) in React Query board cache key
-* useResolveTaskId searches board cache by task_id, falls back to number match (APP-2 → 2), then backlog cache, then UUID passthrough
-* Task panel reads ?task=APP-1 URL param and resolves to UUID via cache
-* noUncheckedIndexedAccess + exactOptionalPropertyTypes removed from tsconfig (too aggressive)
-* Optimistic updates on board DnD, backlog DnD, comments, linked docs, and subtask toggles with rollback on error
-* getOrgMembersApi returns { members, total } object — always unwrap with Array.isArray guard
-* Board query cache prefix ['board', slug] used for invalidation — catches all sprint variants
+* noUncheckedIndexedAccess + exactOptionalPropertyTypes removed from tsconfig
+* Optimistic updates on board DnD, backlog DnD, comments, linked docs, subtask toggles
+* getOrgMembersApi returns { members, total } — always unwrap with Array.isArray guard
+* Board query cache prefix ['board', slug] used for invalidation
 * task.status may be undefined on list responses — always use optional chain task.status?.category
-* task.status_id is always present on list responses — use as fallback when status object absent
-* statusColor exists in taskHelpers.ts; local categoryColor() used inside CreateTaskModal
-* showAllTasks defaults to true on BoardPage so tasks without sprint are always visible
-* Backlog page uses two separate queries: all tasks (for sprint grouping) + pure backlog tasks
-* task_id enrichment done at render time in BoardPage, not in query cache
+* task.status_id is always present on list responses — use as fallback
+* showAllTasks defaults to true on BoardPage so tasks without sprint are visible
+* Backlog page uses two separate queries: all tasks (sprint grouping) + pure backlog tasks
 * Assignee members fetched lazily — only when AssigneeDropdown opens
-* Both backlog caches (['backlog'] and ['backlog-tasks']) invalidated on sprint changes
-* Description autosave: localStorage draft keyed task-desc-draft:{resolvedId}, 1500ms debounce to API, draft cleared on successful save
-* Hooks must never be called after conditional returns (guards kept after all hooks)
-* useMemo used for useResolveTaskId to avoid re-computation on every render
-* Comments use body_json (Tiptap JSON) for both send and receive — never plain content string
+* Description autosave: localStorage draft keyed task-desc-draft:{resolvedId}, 1500ms debounce
+* Comments use body_json (Tiptap JSON) — never plain content string
 * isOwn for comments uses c.author_id (top-level) not c.author.id (nested)
-* Activity log: action is uppercase; old_value/new_value are objects keyed by field name; UUIDs resolved to names
+* Activity log: action uppercase; old_value/new_value objects keyed by field name; UUIDs resolved to names
 * Links API returns { data: [], total: 0 } — unwrap as res.data.data ?? []
 * Subtask filtering: client-side by parent_task_id after fetching type=subtask
-* Subtasks hidden from board and backlog via .filter((t) => t.type !== 'subtask') at render time
 * WikiLayout passes context via useOutletContext — children receive { spaces, pageTree, activeSpace }
 * Wiki custom events (wiki:new-space, wiki:new-page) fired on window for decoupled modal triggering
-* nameToKey() in NewSpaceModal: uppercase, strip non-alphanumeric, max 10 chars
-* PageTree uses menuOpen state + CSS class instead of :has() for options menu visibility
-* PageEditorPage title textarea auto-resizes; 800ms debounce to API + immediate save on blur
-* date-fns formatDistanceToNow used for "Edited X ago" in meta row
-* WikiEditor mounts into id="wiki-editor-mount" div in PageEditorPage
-* Wiki localStorage draft key: page:{pageId} (mirrors task-desc-draft:{resolvedId} pattern)
-* Tiptap table extensions (@tiptap/extension-table etc.) must use named imports { Table } not default imports — default imports throw SyntaxError in Vite due to no default export
-* WikiEditor slash command menu triggered by '/' on empty line; detected via editor.view.dom keydown listener guarded by editor.isEditable + try/catch to avoid "view not mounted" crash
-* Wiki Save button: amber when dirty (isDirty=true), grey/disabled when clean; Cmd/Ctrl+S triggers immediate save
-* Tab title: '• WorkScribe' when unsaved changes exist, resets to 'WorkScribe' on save
+* Tiptap table extensions must use named imports { Table } not default imports
+* Search API response: `{ results: [], total: N, q: "" }` — always use `res.data.results`
+* RBAC pattern: fetch ['members', slug], find currentMember by user_id, derive canManage from role
+* Members query shared/deduped across Sidebar, MembersPage, WikiLayout, BacklogPage
+* getLabelsApi returns `res.data.labels` (unwrapped from `{ labels, total }`)
+* task.labels may be undefined — always use `task.labels ?? []`
 
 ---
 
 ### Test Credentials (local dev)
 
-| Email              | Password    | Role               |
-| ------------------ | ----------- | ------------------ |
-| test@example.com   | password123 | Owner of test-org  |
-| member@example.com | password123 | Member of test-org |
+| Email                         | Password        | Role               |
+| ----------------------------- | --------------- | ------------------ |
+| test@example.com              | password123     | Owner of test-org  |
+| member@example.com            | password123     | Member of test-org |
+| ayushishahi14072004@gmail.com | password123     | Member of test-org |
+| 23cse062@jssaten.ac.in        | (set at accept) | Member of test-org |
 
 * Org slug: `test-org`
 * Project key: `APP`
 * Project ID: f2e0986e-f09c-4cb8-8b84-45ef711c8133
-* Dark theme only — CSS variables from tokens.css, no Tailwind
 * Refresh token stored in sessionStorage (not localStorage)
 * Token refresh: silent via Axios interceptor, concurrent 401s queued
 * setTokenGetter pattern dropped — useAuthStore imported directly in client.ts

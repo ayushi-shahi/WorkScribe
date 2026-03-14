@@ -667,3 +667,28 @@
   color: var(--text-muted);
   font-family: var(--font-mono);
 }
+.sidebar-project-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.sidebar-project-row .sidebar-item--project {
+  flex: 1;
+}
+.sidebar-project-settings-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-right: 4px;
+  transition: all 0.1s;
+}
+.sidebar-project-settings-btn:hover,
+.sidebar-project-settings-btn.active {
+  background: var(--surface2);
+  color: var(--brand);
+}

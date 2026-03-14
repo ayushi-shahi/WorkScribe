@@ -15,6 +15,8 @@ from app.core.config import settings
 from app.core.rate_limit import RateLimitMiddleware
 from app.routers.search import router as search_router
 from app.routers.dashboard import router as dashboard_router
+from app.routers.labels import router as labels_router
+
 
 
 @asynccontextmanager
@@ -129,3 +131,4 @@ app.include_router(notifications.router, prefix="/api/v1", tags=["Notifications"
 app.include_router(websocket.router, prefix="/api/v1", tags=["WebSocket"])
 app.include_router(search_router, prefix="/api/v1")
 app.include_router(dashboard_router, prefix="/api/v1")
+app.include_router(labels_router, prefix="/api/v1")

@@ -67,39 +67,39 @@ services:
       - workscribe-network
     restart: unless-stopped
 
-  # Celery Worker
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: workscribe-worker
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=info --concurrency=2
-    environment:
-      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/workscribe_db
-      REDIS_URL: redis://redis:6379/0
-      JWT_SECRET_KEY: dev-secret-key-min-32-chars-long-change-in-production
-      RESEND_API_KEY: ${RESEND_API_KEY:-}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      FRONTEND_URL: http://localhost:5173
-      ENVIRONMENT: development
-      DEBUG: "true"
-    volumes:
-      - .:/app
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-    networks:
-      - workscribe-network
-    restart: unless-stopped
+#   # Celery Worker
+#   worker:
+#     build:
+#       context: .
+#       dockerfile: Dockerfile
+#     container_name: workscribe-worker
+#     command: celery -A app.workers.celery_app.celery_app worker --loglevel=info --concurrency=2
+#     environment:
+#       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/workscribe_db
+#       REDIS_URL: redis://redis:6379/0
+#       JWT_SECRET_KEY: dev-secret-key-min-32-chars-long-change-in-production
+#       RESEND_API_KEY: ${RESEND_API_KEY:-}
+#       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+#       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+#       FRONTEND_URL: http://localhost:5173
+#       ENVIRONMENT: development
+#       DEBUG: "true"
+#     volumes:
+#       - .:/app
+#     depends_on:
+#       db:
+#         condition: service_healthy
+#       redis:
+#         condition: service_healthy
+#     healthcheck:
+#       test: ["CMD-SHELL", "celery -A app.workers.celery_app.celery_app inspect ping -d celery@$$HOSTNAME --timeout 5 || exit 1"]
+#       interval: 30s
+#       timeout: 10s
+#       retries: 3
+#       start_period: 30s
+#     networks:
+#       - workscribe-network
+#     restart: unless-stopped
 
 volumes:
   workscribe_postgres_data:

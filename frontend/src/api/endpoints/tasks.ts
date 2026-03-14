@@ -98,8 +98,6 @@ export async function getSubtasksApi(
   projectId: string,
   parentTaskId: string
 ): Promise<TaskListResponse> {
-  // Fetch all subtask-type tasks, then filter client-side by parent_task_id
-  // (backend may not support parent_task_id as a query filter)
   const result = await getTasksApi(slug, projectId, { type: 'subtask' }, 0, 100)
   const filtered = result.tasks.filter((t) => t.parent_task_id === parentTaskId)
   return { ...result, tasks: filtered, total: filtered.length }
@@ -163,14 +161,53 @@ export interface SprintListResponse {
   total: number
 }
 
+// ── Labels ────────────────────────────────────────────────────────────────────
+
 export async function getLabelsApi(
   slug: string,
   projectId: string
 ): Promise<Label[]> {
-  const res = await apiClient.get<Label[]>(
+  const res = await apiClient.get<{ labels: Label[]; total: number }>(
     `/organizations/${slug}/projects/${projectId}/labels`
   )
+  return res.data.labels
+}
+
+export async function createLabelApi(
+  slug: string,
+  projectId: string,
+  data: { name: string; color: string }
+): Promise<Label> {
+  const res = await apiClient.post<Label>(
+    `/organizations/${slug}/projects/${projectId}/labels`,
+    data
+  )
   return res.data
+}
+
+export async function deleteLabelApi(
+  slug: string,
+  projectId: string,
+  labelId: string
+): Promise<void> {
+  await apiClient.delete(
+    `/organizations/${slug}/projects/${projectId}/labels/${labelId}`
+  )
+}
+
+export async function assignLabelToTaskApi(
+  taskId: string,
+  labelId: string
+): Promise<Label> {
+  const res = await apiClient.post<Label>(`/tasks/${taskId}/labels/${labelId}`)
+  return res.data
+}
+
+export async function removeLabelFromTaskApi(
+  taskId: string,
+  labelId: string
+): Promise<void> {
+  await apiClient.delete(`/tasks/${taskId}/labels/${labelId}`)
 }
 
 // ── Sprint task assignment ─────────────────────────────────────────────────────
@@ -189,7 +226,7 @@ export async function removeTaskFromSprintApi(
   await apiClient.delete(`/sprints/${sprintId}/tasks/${taskId}`)
 }
 
-// ── Sprint CRUD ────────────────────────────────────────────────────────────────
+// ── Sprint CRUD ───────────────────────────────────────────────────────────────
 
 export interface CreateSprintRequest {
   name: string
@@ -222,7 +259,7 @@ export async function createSprintApi(
   return res.data
 }
 
-// ── Sprint lifecycle ───────────────────────────────────────────────────────────
+// ── Sprint lifecycle ──────────────────────────────────────────────────────────
 
 export async function startSprintApi(sprintId: string): Promise<SprintResponse> {
   const res = await apiClient.post<SprintResponse>(`/sprints/${sprintId}/start`)
@@ -241,7 +278,7 @@ export async function completeSprintApi(
   return res.data
 }
 
-// ── Activity log ───────────────────────────────────────────────────────────────
+// ── Activity log ──────────────────────────────────────────────────────────────
 
 export async function getActivityApi(taskId: string): Promise<import('@/types').ActivityListResponse> {
   const res = await apiClient.get(`/tasks/${taskId}/activity`)

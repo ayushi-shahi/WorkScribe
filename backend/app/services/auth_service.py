@@ -11,7 +11,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import redis.asyncio as aioredis
-from fastapi import HTTPException, status
+from fastapi import HTTPException, status, BackgroundTasks
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -40,9 +40,10 @@ from app.schemas.auth import (
 class AuthService:
     """Handles all authentication operations."""
 
-    def __init__(self, db: AsyncSession, redis: aioredis.Redis) -> None:
+    def __init__(self, db: AsyncSession, redis: aioredis.Redis, background_tasks: BackgroundTasks | None = None) -> None:
         self.db = db
         self.redis = redis
+        self.background_tasks = background_tasks
 
     # -----------------------------------------------------------------------
     # Register
@@ -232,11 +233,13 @@ class AuthService:
 
         # Queue email task
         from app.workers.email_tasks import send_password_reset_email
-        send_password_reset_email.delay(
-            to_email=user.email,
-            reset_token=token,
-            frontend_url=settings.FRONTEND_URL,
-        )
+        if self.background_tasks:
+            self.background_tasks.add_task(
+                send_password_reset_email,
+                to_email=user.email,
+                reset_token=token,
+                frontend_url=settings.FRONTEND_URL,
+            )
 
     # -----------------------------------------------------------------------
     # Reset Password

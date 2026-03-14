@@ -17,7 +17,7 @@ from typing import Any
 from uuid import UUID
 
 import redis.asyncio as aioredis
-from fastapi import HTTPException, status
+from fastapi import BackgroundTasks, HTTPException, status
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -71,6 +71,7 @@ async def _invalidate_board_cache(redis: aioredis.Redis, org_id: UUID, project_i
 # ---------------------------------------------------------------------------
 
 def _queue_notification(
+    background_tasks: BackgroundTasks,
     org_id: UUID,
     user_id: UUID,
     notification_type: str,
@@ -79,12 +80,9 @@ def _queue_notification(
     entity_type: str,
     entity_id: UUID,
 ) -> None:
-    """
-    Fire-and-forget: enqueue a Celery notification task.
-    Import is deferred to avoid circular imports at module load.
-    """
     from app.workers.notification_tasks import dispatch_notification
-    dispatch_notification.delay(
+    background_tasks.add_task(
+        dispatch_notification,
         org_id=str(org_id),
         user_id=str(user_id),
         notification_type=notification_type,
@@ -120,9 +118,10 @@ def _extract_mention_user_ids(body_json: dict[str, Any]) -> list[str]:
 class TaskService:
     """Handles all task operations."""
 
-    def __init__(self, db: AsyncSession, redis: aioredis.Redis) -> None:
+    def __init__(self, db: AsyncSession, redis: aioredis.Redis, background_tasks: BackgroundTasks | None = None) -> None:
         self.db = db
         self.redis = redis
+        self.background_tasks = background_tasks
 
     # -----------------------------------------------------------------------
     # List Tasks
@@ -407,6 +406,7 @@ class TaskService:
 
         if data.assignee_id is not None and data.assignee_id != reporter.id:
             _queue_notification(
+                self.background_tasks,
                 org_id=org_id,
                 user_id=data.assignee_id,
                 notification_type="TASK_ASSIGNED",
@@ -590,6 +590,7 @@ class TaskService:
         ):
             project = await self._get_project(task.project_id, org_id)
             _queue_notification(
+                self.background_tasks,
                 org_id=org_id,
                 user_id=data.assignee_id,
                 notification_type="TASK_ASSIGNED",
@@ -610,6 +611,7 @@ class TaskService:
             if new_status and new_status.category == StatusCategory.done:
                 project = await self._get_project(task.project_id, org_id)
                 _queue_notification(
+                    self.background_tasks,
                     org_id=org_id,
                     user_id=task.reporter_id,
                     notification_type="TASK_DONE",
@@ -687,6 +689,7 @@ class TaskService:
                 if new_status.category == StatusCategory.done:
                     project = await self._get_project(task.project_id, org_id)
                     _queue_notification(
+                        self.background_tasks,
                         org_id=org_id,
                         user_id=task.reporter_id,
                         notification_type="TASK_DONE",
@@ -807,6 +810,17 @@ class TaskService:
         self.db.add(comment)
         await self.db.flush()
 
+        await self._log_activity(
+            org_id=org_id,
+            task_id=task_id,
+            actor_id=author.id,
+            action="COMMENT_ADDED",
+            entity_type="comment",
+            entity_id=comment.id,
+            new_value={"comment_id": str(comment.id)},
+        )
+        await self.db.flush()
+
         mention_user_ids = _extract_mention_user_ids(data.body_json)
         for uid_str in set(mention_user_ids):
             try:
@@ -817,6 +831,7 @@ class TaskService:
                 continue
             project = await self._get_project(task.project_id, org_id)
             _queue_notification(
+                self.background_tasks,
                 org_id=org_id,
                 user_id=uid,
                 notification_type="MENTION",
