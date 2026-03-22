@@ -38,6 +38,7 @@ from app.schemas.task import (
     CommentResponse,
     CommentUpdateRequest,
     LabelResponse,
+    MyTasksResponse,
     TaskCreateRequest,
     TaskDetailResponse,
     TaskListItem,
@@ -313,6 +314,78 @@ class TaskService:
         ]
 
         return BacklogListResponse(tasks=items, total=total, skip=skip, limit=limit)
+
+    # -----------------------------------------------------------------------
+    # My Tasks (cross-project, assigned to current user)
+    # -----------------------------------------------------------------------
+
+    async def list_my_tasks(
+        self,
+        org_id: UUID,
+        user_id: UUID,
+        skip: int = 0,
+        limit: int = 50,
+        status_category: str | None = None,
+        priority: str | None = None,
+    ) -> MyTasksResponse:
+        """
+        List all tasks assigned to the current user within an org.
+        Cross-project. Excludes subtasks. Always hits DB — no cache.
+        Ordered by updated_at DESC so most recently active tasks appear first.
+        """
+        stmt = (
+            select(Task)
+            .where(
+                Task.org_id == org_id,
+                Task.assignee_id == user_id,
+                Task.type != TaskType.subtask,
+            )
+        )
+
+        if status_category is not None:
+            stmt = stmt.join(
+                TaskStatus, Task.status_id == TaskStatus.id
+            ).where(
+                TaskStatus.category == StatusCategory(status_category)
+            )
+
+        if priority is not None:
+            stmt = stmt.where(Task.priority == TaskPriority(priority))
+
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = (await self.db.execute(count_stmt)).scalar_one()
+
+        stmt = stmt.order_by(Task.updated_at.desc()).offset(skip).limit(limit)
+        result = await self.db.execute(stmt)
+        tasks = list(result.scalars().all())
+
+        task_ids = [t.id for t in tasks]
+        labels_by_task = await self._load_labels_for_tasks(task_ids)
+
+        items = [
+            TaskListItem(
+                id=t.id,
+                org_id=t.org_id,
+                project_id=t.project_id,
+                number=t.number,
+                title=t.title,
+                status_id=t.status_id,
+                assignee_id=t.assignee_id,
+                reporter_id=t.reporter_id,
+                priority=t.priority.value,
+                type=t.type.value,
+                parent_task_id=t.parent_task_id,
+                sprint_id=t.sprint_id,
+                position=t.position,
+                due_date=t.due_date,
+                created_at=t.created_at,
+                updated_at=t.updated_at,
+                labels=labels_by_task.get(t.id, []),
+            )
+            for t in tasks
+        ]
+
+        return MyTasksResponse(tasks=items, total=total, skip=skip, limit=limit)
 
     # -----------------------------------------------------------------------
     # Create Task

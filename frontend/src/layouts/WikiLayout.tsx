@@ -76,11 +76,11 @@ export default function WikiLayout() {
     staleTime: 60_000,
   })
 
-  const { data: rawPageTree } = useQuery({
-    queryKey: ['page-tree', spaceId],
-    queryFn: () => getPageTreeApi(spaceId ?? ''),
-    enabled: !!spaceId,
-    staleTime: 30_000,
+  const { data: rawPageTree, isLoading: treeLoading } = useQuery({
+  queryKey: ['page-tree', spaceId],
+  queryFn: () => getPageTreeApi(spaceId ?? ''),
+  enabled: !!spaceId,
+  staleTime: 30_000,
   })
   const pageTree: PageTreeNode[] = Array.isArray(rawPageTree) ? rawPageTree : []
 
@@ -169,7 +169,25 @@ export default function WikiLayout() {
               </button>
             </div>
             <div className="wiki-tree-body">
-              {pageTree.length === 0 && newPageParent === undefined && (
+              {/* ── Tree loading skeleton ─────────────────────── */}
+              {treeLoading && (
+                <div style={{ padding: '8px 4px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {[70, 85, 55, 90, 65].map((w, i) => (
+                    <div
+                      key={i}
+                      className="skeleton"
+                      style={{
+                        width: `${w}%`,
+                        height: 14,
+                        borderRadius: 4,
+                        marginLeft: i % 2 === 1 ? 16 : 0,
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {!treeLoading && pageTree.length === 0 && newPageParent === undefined && (
                 <div className="wiki-empty-hint wiki-empty-hint--tree">
                   <FileText size={28} strokeWidth={1.5} />
                   <span>No pages yet</span>
@@ -182,7 +200,7 @@ export default function WikiLayout() {
                 </div>
               )}
 
-              {pageTree.length > 0 && (
+              {!treeLoading && pageTree.length > 0 && (
                 <PageTree
                   nodes={pageTree}
                   spaceId={spaceId ?? ''}

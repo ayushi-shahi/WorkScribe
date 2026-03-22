@@ -54,6 +54,13 @@ export interface BoardFilters {
   parent_task_id?: string
 }
 
+export interface MyTasksFilters {
+  status_category?: 'todo' | 'in_progress' | 'done'
+  priority?: 'urgent' | 'high' | 'medium' | 'low' | 'none'
+  skip?: number
+  limit?: number
+}
+
 export async function getTasksApi(
   slug: string,
   projectId: string,
@@ -282,5 +289,22 @@ export async function completeSprintApi(
 
 export async function getActivityApi(taskId: string): Promise<import('@/types').ActivityListResponse> {
   const res = await apiClient.get(`/tasks/${taskId}/activity`)
+  return res.data
+}
+
+// ── My Tasks (cross-project) ──────────────────────────────────────────────────
+
+export async function getMyTasksApi(
+  slug: string,
+  filters: MyTasksFilters = {}
+): Promise<TaskListResponse> {
+  const params = new URLSearchParams()
+  params.set('skip',  String(filters.skip  ?? 0))
+  params.set('limit', String(filters.limit ?? 50))
+  if (filters.status_category) params.set('status_category', filters.status_category)
+  if (filters.priority)        params.set('priority',        filters.priority)
+  const res = await apiClient.get<TaskListResponse>(
+    `/organizations/${slug}/my-tasks?${params.toString()}`
+  )
   return res.data
 }

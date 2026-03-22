@@ -3,7 +3,7 @@ import { useState, useRef, useEffect } from 'react'
 import { useParams, NavLink, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMutation } from '@tanstack/react-query'
-import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, Plus, X , LayoutList} from 'lucide-react'
 import {
   DndContext,
   DragOverlay,
@@ -591,8 +591,8 @@ export default function BacklogPage() {
         } else if (sourceSprintId) {
           await removeTaskFromSprintApi(sourceSprintId, activeId)
         }
-        queryClient.invalidateQueries({ queryKey: ['backlog', slug, project.id] })
-        queryClient.invalidateQueries({ queryKey: ['backlog-tasks', slug, project.id] })
+        queryClient.invalidateQueries({ queryKey: ['backlog', slug, project?.id] })
+        queryClient.invalidateQueries({ queryKey: ['backlog-tasks', slug, project?.id] })
         queryClient.invalidateQueries({ queryKey: ['board', slug] })
       } catch {
         queryClient.setQueryData(allTasksKey, snapshot.all)
@@ -713,8 +713,23 @@ export default function BacklogPage() {
 
           {activeSprints.length === 0 && plannedSprints.length === 0 && backlogTasks.length === 0 && (
             <div className="bl-empty-state">
+              <div className="bl-empty-icon">
+                <LayoutList size={36} strokeWidth={1.2} />
+              </div>
               <p className="bl-empty-title">No tasks yet</p>
-              <p className="bl-empty-sub">Create your first task to get started</p>
+              <p className="bl-empty-sub">
+                Create a sprint to start planning, or add tasks directly to the backlog
+              </p>
+              {canManage && (
+                <button
+                  type="button"
+                  className="bl-empty-action"
+                  onClick={() => setShowCreateSprint(true)}
+                >
+                  <Plus size={13} />
+                  New Sprint
+                </button>
+              )}
             </div>
           )}
         </div>

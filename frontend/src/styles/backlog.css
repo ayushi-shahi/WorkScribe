@@ -407,20 +407,6 @@
   gap: var(--space-2);
 }
 
-.bl-empty-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  font-family: var(--font);
-  margin: 0;
-}
-
-.bl-empty-sub {
-  font-size: 13px;
-  color: var(--text-muted);
-  font-family: var(--font);
-  margin: 0;
-}
 
 /* ── Skeleton ─────────────────────────────────────────────────────────────────── */
 .skeleton {
@@ -912,4 +898,59 @@
 
 .csm-btn--complete:hover:not(:disabled) {
   background: #22c55e;
+}
+
+/* ── Empty state ─────────────────────────────────────────────────────────── */
+.bl-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: 80px var(--space-6);
+  text-align: center;
+}
+
+.bl-empty-icon {
+  color: var(--text-muted);
+  opacity: 0.35;
+}
+
+.bl-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font);
+  margin: 0;
+}
+
+.bl-empty-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-family: var(--font);
+  margin: 0;
+  max-width: 340px;
+  line-height: 1.5;
+}
+
+.bl-empty-action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 32px;
+  padding: 0 var(--space-4);
+  background: var(--brand);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  margin-top: var(--space-2);
+}
+
+.bl-empty-action:hover {
+  background: var(--brand-hover);
 }

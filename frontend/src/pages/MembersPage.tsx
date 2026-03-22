@@ -5,6 +5,7 @@ import { Users, ChevronDown, Crown, Shield, User, X } from 'lucide-react'
 import {
   getOrgMembersApi,
   inviteMemberApi,
+  removeMemberApi,
 } from '@/api/endpoints/organizations'
 import { useAuthStore } from '@/stores/authStore'
 import { getInitials } from '@/lib/taskHelpers'
@@ -44,7 +45,6 @@ export default function MembersPage() {
   const queryClient = useQueryClient()
   const currentUser = useAuthStore((s) => s.user)
 
-  // Invite form state
   const [inviteEmail, setInviteEmail]   = useState('')
   const [inviteRole, setInviteRole]     = useState<Role>('member')
   const [roleDropOpen, setRoleDropOpen] = useState(false)
@@ -56,7 +56,6 @@ export default function MembersPage() {
     staleTime: 60_000,
   })
 
-  // API returns { members, total } or plain array — handle both
   const members: OrgMember[] = (() => {
     if (!rawMembers) return []
     if (Array.isArray(rawMembers)) return rawMembers as OrgMember[]
@@ -64,12 +63,11 @@ export default function MembersPage() {
     return r.members ?? []
   })()
 
-  // Determine current user's role in this org
   const currentMember = members.find((m) => m.user_id === currentUser?.id)
   const currentRole   = currentMember?.role ?? 'member'
-  const canInvite     = currentRole === 'owner' || currentRole === 'admin'
   const canManage     = currentRole === 'owner' || currentRole === 'admin'
 
+  // ── Invite ───────────────────────────────────────────────────
   const { mutate: invite, isPending: inviting } = useMutation({
     mutationFn: () =>
       inviteMemberApi(slug ?? '', { email: inviteEmail, role: inviteRole }),
@@ -79,8 +77,9 @@ export default function MembersPage() {
       setInviteRole('member')
       queryClient.invalidateQueries({ queryKey: ['members', slug] })
     },
-    onError: (err: any) => {
-      const code = err?.response?.data?.detail?.code
+    onError: (err: unknown) => {
+      const code = (err as { response?: { data?: { detail?: { code?: string } } } })
+        ?.response?.data?.detail?.code
       if (code === 'ALREADY_MEMBER') {
         toast.error('This person is already a member of the organization')
       } else if (code === 'INVITE_EXISTS') {
@@ -88,6 +87,38 @@ export default function MembersPage() {
       } else {
         toast.error('Failed to send invitation')
       }
+    },
+  })
+
+  // ── Remove member ────────────────────────────────────────────
+  const { mutate: removeMember, isPending: removing } = useMutation({
+    mutationFn: (userId: string) => removeMemberApi(slug ?? '', userId),
+    onMutate: async (userId: string) => {
+      await queryClient.cancelQueries({ queryKey: ['members', slug] })
+      const snapshot = queryClient.getQueryData(['members', slug])
+
+      queryClient.setQueryData(['members', slug], (old: unknown) => {
+        if (!old) return old
+        const list: OrgMember[] = Array.isArray(old)
+          ? (old as OrgMember[])
+          : ((old as { members?: OrgMember[] }).members ?? [])
+        const filtered = list.filter((m) => m.user_id !== userId)
+        if (Array.isArray(old)) return filtered
+        return { ...(old as object), members: filtered }
+      })
+
+      return { snapshot }
+    },
+    onSuccess: (_data, userId) => {
+      const removed = members.find((m) => m.user_id === userId)
+      toast.success(`${removed?.display_name ?? 'Member'} removed`)
+      queryClient.invalidateQueries({ queryKey: ['members', slug] })
+    },
+    onError: (_err, _userId, context) => {
+      if (context?.snapshot) {
+        queryClient.setQueryData(['members', slug], context.snapshot)
+      }
+      toast.error('Failed to remove member')
     },
   })
 
@@ -100,9 +131,13 @@ export default function MembersPage() {
     invite()
   }
 
+  function handleRemove(member: OrgMember) {
+    if (!confirm(`Remove ${member.display_name} from this organization?`)) return
+    removeMember(member.user_id)
+  }
+
   return (
     <div className="members-root">
-      {/* ── Page header ───────────────────────────────────────── */}
       <div className="page-header">
         <Users size={15} style={{ color: 'var(--text-muted)' }} />
         <span className="page-header-title">Members</span>
@@ -113,8 +148,8 @@ export default function MembersPage() {
 
       <div className="members-body">
 
-        {/* ── Invite section — only visible to owner/admin ─── */}
-        {canInvite && (
+        {/* ── Invite — owner/admin only ──────────────────────── */}
+        {canManage && (
           <div className="members-section">
             <div className="members-section-header">
               <h2 className="members-section-title">Invite people</h2>
@@ -135,7 +170,6 @@ export default function MembersPage() {
                   disabled={inviting}
                 />
 
-                {/* Role picker */}
                 <div className="members-role-wrap">
                   <button
                     className="members-role-btn"
@@ -201,9 +235,11 @@ export default function MembersPage() {
             ) : (
               <div className="members-list">
                 {members.map((m) => {
-                  const isYou    = m.user_id === currentUser?.id
-                  const meta     = ROLE_META[m.role] ?? ROLE_META.member
-                  // Owner can remove admin/member; admin can only remove member; never remove self or owner
+                  const isYou = m.user_id === currentUser?.id
+                  const meta  = ROLE_META[m.role] ?? ROLE_META.member
+                  // Owner can remove admin/member
+                  // Admin can only remove member
+                  // Never remove self or owner
                   const canRemove =
                     canManage &&
                     !isYou &&
@@ -212,12 +248,10 @@ export default function MembersPage() {
 
                   return (
                     <div key={m.user_id} className="members-row">
-                      {/* Avatar */}
                       <div className="avatar avatar-md members-avatar">
                         {getInitials(m.display_name)}
                       </div>
 
-                      {/* Info */}
                       <div className="members-info">
                         <div className="members-name">
                           {m.display_name}
@@ -226,28 +260,29 @@ export default function MembersPage() {
                         <div className="members-email">{m.email}</div>
                       </div>
 
-                      {/* Role badge */}
                       <div className={`members-role-badge members-role-badge--${m.role}`}>
                         {meta.icon}
                         {meta.label}
                       </div>
 
-                      {/* Joined */}
                       <div className="members-joined">
                         Joined {new Date(m.joined_at).toLocaleDateString('en-US', {
                           month: 'short', day: 'numeric', year: 'numeric',
                         })}
                       </div>
 
-                      {/* Remove button — only shown to owner/admin for eligible members */}
-                      {canRemove && (
+                      {canRemove ? (
                         <button
                           className="members-remove-btn"
-                          onClick={() => toast.error('Remove member coming soon')}
+                          onClick={() => handleRemove(m)}
+                          disabled={removing}
                           title="Remove member"
                         >
                           <X size={13} />
                         </button>
+                      ) : (
+                        // Keep layout stable — empty placeholder where X would be
+                        <div className="members-remove-placeholder" />
                       )}
                     </div>
                   )

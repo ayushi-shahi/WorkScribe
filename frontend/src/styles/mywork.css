@@ -1,0 +1,321 @@
+/* ── My Work root ─────────────────────────────────────────────────────────── */
+.mw-root {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--topbar-height));
+}
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+.mw-header {
+  padding: var(--space-6) var(--space-6) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.mw-header-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-family: var(--font);
+  margin: 0;
+  padding-left: 2px;
+}
+
+.mw-total-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 6px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+/* ── Toolbar ──────────────────────────────────────────────────────────────── */
+.mw-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border);
+}
+
+/* ── Status tabs ──────────────────────────────────────────────────────────── */
+.mw-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 3px;
+}
+
+.mw-tab {
+  height: 26px;
+  padding: 0 var(--space-3);
+  background: none;
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: var(--font);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast);
+  white-space: nowrap;
+}
+
+.mw-tab:hover {
+  background: var(--surface3);
+  color: var(--text-primary);
+}
+
+.mw-tab--active {
+  background: var(--surface3);
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+/* ── Priority select ──────────────────────────────────────────────────────── */
+.mw-priority-select {
+  height: 32px;
+  padding: 0 var(--space-3);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-family: var(--font);
+  color: var(--text-secondary);
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.mw-priority-select:hover,
+.mw-priority-select:focus {
+  border-color: var(--border2);
+  color: var(--text-primary);
+}
+
+/* ── List ─────────────────────────────────────────────────────────────────── */
+.mw-list {
+  display: flex;
+  flex-direction: column;
+  padding: 0 var(--space-6) var(--space-6);
+}
+
+/* ── Column headers ───────────────────────────────────────────────────────── */
+.mw-list-header {
+  display: grid;
+  grid-template-columns: 16px 72px 1fr 72px 72px 1fr 100px;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.mw-list-header span {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-family: var(--font);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* ── Task row ─────────────────────────────────────────────────────────────── */
+.mw-row {
+  display: grid;
+  grid-template-columns: 16px 72px 1fr 72px 72px 1fr 100px;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  border-radius: var(--radius-sm);
+}
+
+.mw-row:last-child {
+  border-bottom: none;
+}
+
+.mw-row:hover {
+  background: var(--surface2);
+}
+
+.mw-row:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: -2px;
+}
+
+/* ── Row cells ────────────────────────────────────────────────────────────── */
+.mw-priority-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mw-task-id {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mw-task-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  font-family: var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mw-task-title--done {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+/* ── Type chip ────────────────────────────────────────────────────────────── */
+.mw-type-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font);
+  text-transform: capitalize;
+  white-space: nowrap;
+  background: var(--surface2);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+}
+
+.mw-type-chip--bug {
+  background: rgba(248, 113, 113, 0.1);
+  color: var(--red);
+  border-color: rgba(248, 113, 113, 0.2);
+}
+
+.mw-type-chip--story {
+  background: rgba(96, 165, 250, 0.1);
+  color: var(--blue);
+  border-color: rgba(96, 165, 250, 0.2);
+}
+
+.mw-type-chip--task {
+  background: var(--brand-light);
+  color: var(--brand);
+  border-color: var(--brand-mid);
+}
+
+/* ── Project key ──────────────────────────────────────────────────────────── */
+.mw-project-key {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  white-space: nowrap;
+}
+
+/* ── Labels ───────────────────────────────────────────────────────────────── */
+.mw-labels {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+}
+
+.mw-label-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: var(--radius-full);
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--font);
+  white-space: nowrap;
+}
+
+.mw-label-more {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+/* ── Updated ──────────────────────────────────────────────────────────────── */
+.mw-updated {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font);
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* ── Empty state ──────────────────────────────────────────────────────────── */
+.mw-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: 80px var(--space-6);
+  text-align: center;
+}
+
+.mw-empty-icon {
+  color: var(--text-muted);
+  opacity: 0.4;
+}
+
+.mw-empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font);
+  margin: 0;
+}
+
+.mw-empty-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-family: var(--font);
+  margin: 0;
+  max-width: 360px;
+  line-height: 1.5;
+}
+
+/* ── Skeleton ─────────────────────────────────────────────────────────────── */
+.mw-row-skeleton {
+  display: grid;
+  grid-template-columns: 16px 1fr 60px 80px;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+
+.mw-row-skeleton:last-child {
+  border-bottom: none;
+}

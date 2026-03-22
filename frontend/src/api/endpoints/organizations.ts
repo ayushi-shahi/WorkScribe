@@ -46,13 +46,15 @@ export async function inviteMemberApi(
   await apiClient.post(`/organizations/${slug}/invite`, data)
 }
 
+export async function removeMemberApi(slug: string, userId: string): Promise<void> {
+  await apiClient.delete(`/organizations/${slug}/members/${userId}`)
+}
+
 export async function checkSlugApi(slug: string): Promise<{ available: boolean }> {
   try {
     await apiClient.get(`/organizations/${slug}`)
-    // If it resolves, slug is taken
     return { available: false }
   } catch {
-    // 404 means slug is available
     return { available: true }
   }
 }

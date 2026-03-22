@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useParams, useNavigate, Navigate } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Settings, Check, X, Loader, ShieldOff } from 'lucide-react'
 import { getOrgApi, updateOrgApi, checkSlugApi, getOrgMembersApi } from '@/api/endpoints/organizations'
@@ -42,11 +42,11 @@ export default function OrgSettingsPage() {
     return r.members ?? []
   })()
 
-  const currentMember = members.find((m) => m.user_id === currentUser?.id)
-  const currentRole   = currentMember?.role ?? null
-  const isOwner       = currentRole === 'owner'
-  const isAdmin       = currentRole === 'admin'
-  const canEditGeneral = isOwner || isAdmin   // admins can rename, only owner can delete
+  const currentMember  = members.find((m) => m.user_id === currentUser?.id)
+  const currentRole    = currentMember?.role ?? null
+  const isOwner        = currentRole === 'owner'
+  const isAdmin        = currentRole === 'admin'
+  const canEditGeneral = isOwner || isAdmin
   const canDelete      = isOwner
 
   // ── Fetch org data ─────────────────────────────────────────
@@ -91,7 +91,7 @@ export default function OrgSettingsPage() {
 
   const { mutate: save, isPending: saving } = useMutation({
     mutationFn: () => updateOrgApi(slug ?? '', {
-      name:  name !== org?.name   ? name    : undefined,
+      name:  name !== org?.name    ? name    : undefined,
       slug:  newSlug !== org?.slug ? newSlug : undefined,
     }),
     onSuccess: (updated) => {
@@ -130,7 +130,7 @@ export default function OrgSettingsPage() {
     )
   }
 
-  // ── Access guard — plain members cannot access settings ────
+  // ── Access guard ───────────────────────────────────────────
   if (currentRole === 'member') {
     return (
       <div className="settings-root">
@@ -161,7 +161,7 @@ export default function OrgSettingsPage() {
 
       <div className="settings-body">
 
-        {/* ── General section ───────────────────────────────── */}
+        {/* ── General ───────────────────────────────────────── */}
         <div className="settings-section">
           <div className="settings-section-header">
             <h2 className="settings-section-title">General</h2>
@@ -172,7 +172,6 @@ export default function OrgSettingsPage() {
 
           <div className="settings-card">
 
-            {/* Org name */}
             <div className="settings-field">
               <label className="settings-label" htmlFor="org-name">
                 Organization name
@@ -191,7 +190,6 @@ export default function OrgSettingsPage() {
               </p>
             </div>
 
-            {/* Slug */}
             <div className="settings-field">
               <label className="settings-label" htmlFor="org-slug">
                 URL slug
@@ -231,7 +229,6 @@ export default function OrgSettingsPage() {
               )}
             </div>
 
-            {/* Save button */}
             <div className="settings-actions">
               <button
                 className="settings-save-btn"

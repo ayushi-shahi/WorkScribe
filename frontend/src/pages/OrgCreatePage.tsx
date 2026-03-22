@@ -37,7 +37,7 @@ function Step1({ onComplete }: Step1Props) {
   const [name, setName] = useState('')
   const [slug, setSlug] = useState('')
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false)
-  const [slugStatus, setSlugStatus] = useState
+  const [slugStatus, setSlugStatus] = useState <
     'idle' | 'checking' | 'available' | 'taken' | 'invalid'
   >('idle')
   const [fieldErrors, setFieldErrors] = useState<{ name?: string; slug?: string }>({})

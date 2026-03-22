@@ -2,7 +2,7 @@
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useParams, NavLink, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { Plus, X, ChevronDown } from 'lucide-react'
+import { Plus, X, ChevronDown, CheckSquare  } from 'lucide-react'
 import {
   DndContext,
   DragOverlay,
@@ -445,7 +445,47 @@ export default function BoardPage() {
               )
             })}
           </div>
-        </div>
+
+          {/* ── Empty: no tasks at all ───────────────────────────────────── */}
+          {allTasks.length === 0 && (
+            <div className="board-empty">
+              <div className="board-empty-icon">
+                <CheckSquare size={36} strokeWidth={1.2} />
+              </div>
+              <p className="board-empty-title">No tasks yet</p>
+              <p className="board-empty-sub">
+                Create your first task to start tracking work
+              </p>
+              <button
+                className="board-empty-action"
+                onClick={() => setShowCreateModal(true)}
+              >
+                <Plus size={13} />
+                Create Task
+              </button>
+            </div>
+          )}
+
+          {/* ── Empty: filters active but nothing matches ────────────────── */}
+          {allTasks.length > 0 && filteredTasks.length === 0 && (
+            <div className="board-empty">
+              <div className="board-empty-icon">
+                <X size={36} strokeWidth={1.2} />
+              </div>
+              <p className="board-empty-title">No tasks match your filters</p>
+              <p className="board-empty-sub">
+                Try adjusting or clearing your filters
+              </p>
+              <button
+                className="board-empty-action"
+                onClick={() => setFilters(EMPTY_FILTERS)}
+              >
+                Clear filters
+              </button>
+            </div>
+          )}
+          </div>
+    
 
         <DragOverlay>
           {activeTask && (

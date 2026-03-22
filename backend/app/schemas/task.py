@@ -159,6 +159,19 @@ class BacklogListResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# My Tasks (cross-project, assigned to current user)
+# ---------------------------------------------------------------------------
+
+class MyTasksResponse(BaseModel):
+    """Response for GET /organizations/{slug}/my-tasks."""
+
+    tasks: list[TaskListItem]
+    total: int
+    skip: int
+    limit: int
+
+
+# ---------------------------------------------------------------------------
 # Task detail (full — for task panel)
 # ---------------------------------------------------------------------------
 

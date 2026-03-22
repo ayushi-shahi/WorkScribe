@@ -1,6 +1,6 @@
 # WorkScribe — Progress Doc
 
-**Last Updated:** 2026-03-14
+**Last Updated:** 2026-03-22
 **Latest Commit:** `feat: labels API + project settings UI + celery to backgroundtasks migration`
 **Alembic Head:** `d4e5f6a1b2c3` (create_notifications_table)
 **API:** `http://localhost:8001`
@@ -27,14 +27,15 @@
 | 8.1   | Google OAuth                | ✅ Complete & Tested |
 | —    | API Hardening — Gaps 1–5  | ✅ Complete & Tested |
 | —    | Labels API + UI             | ✅ Complete & Tested |
-| J2    | Empty states                | ⬜ Next              |
-| J3    | Error boundaries            | ⬜                   |
-| J4    | Loading skeletons audit     | ⬜                   |
-| J5    | Production build + deploy   | ⬜                   |
+| J1    | My Work page + RBAC audit   | ✅ Complete & Tested |
+| J2    | Empty states                | ✅ Complete & Tested |
+| J3    | Error boundaries            | ✅ Complete & Tested |
+| J4    | Loading skeletons audit     | ✅ Complete & Tested |
+| J5    | Production build + deploy   | ⬜ Next              |
 | J6    | Performance optimization    | ⬜                   |
 
 **Backend: 100% complete.**
-**Frontend: All features complete through J1 — next: J2–J6 polish.**
+**Frontend: All features complete through J4 — next: J5–J6 polish.**
 
 ---
 
@@ -575,6 +576,7 @@ Default `limit=50`, max `limit=100`, enforced via `Query(ge=1, le=100)`.
 * Search response shape: `{ results: [], total: N, q: "" }` — frontend must use `res.data.results`
 * Page is_deleted filter: use `isnot(True)` not `is_(False)` to handle NULL rows
 * 204 endpoints: return `Response(status_code=204)` from function body — never use `response_class=Response` on decorator
+* Gmail credentials: `GMAIL_USER` and `GMAIL_APP_PASSWORD` must be set as env vars — never hardcode
 
 ---
 
@@ -616,7 +618,7 @@ Default `limit=50`, max `limit=100`, enforced via `Query(ge=1, le=100)`.
 
 # Frontend Progress
 
-Last Updated: 2026-03-14
+Last Updated: 2026-03-22
 Backend: 100% complete
 Frontend location: /frontend
 Dev server: http://localhost:5173
@@ -673,13 +675,13 @@ Backend API: http://localhost:8001/api/v1
 | I1    | DashboardPage                                                     | ✅ Done |
 | I2    | MembersPage                                                       | ✅ Done |
 | I3    | OrgSettingsPage                                                   | ✅ Done |
-| J1    | RBAC audit + fixes                                                | ✅ Done |
+| J1    | RBAC audit + fixes + My Work page                                 | ✅ Done |
 | —    | Labels API + frontend + ProjectSettingsPage                       | ✅ Done |
 | —    | Celery → BackgroundTasks migration                               | ✅ Done |
-| J2    | Empty states                                                      | ⬜ Next |
-| J3    | Error boundaries                                                  | ⬜      |
-| J4    | Loading skeletons audit                                           | ⬜      |
-| J5    | Production build + deploy                                         | ⬜      |
+| J2    | Empty states                                                      | ✅ Done |
+| J3    | Error boundaries                                                  | ✅ Done |
+| J4    | Loading skeletons audit                                           | ✅ Done |
+| J5    | Production build + deploy                                         | ⬜ Next |
 | J6    | Performance optimization                                          | ⬜      |
 
 ---
@@ -792,7 +794,7 @@ Backend API: http://localhost:8001/api/v1
 * MembersPage: member list, invite form (owner/admin only), remove member
 * OrgSettingsPage: name/slug edit, delete org, access-denied screen for members
 
-#### J1 — RBAC Audit ✅
+#### J1 — RBAC Audit + My Work Page ✅
 
 Role check pattern:
 
@@ -809,6 +811,58 @@ const canManage = currentMember?.role === 'owner' || currentMember?.role === 'ad
 | OrgSettingsPage | Entire page → "Access restricted" screen                  |
 | WikiLayout      | `+ New Space`button                                      |
 | BacklogPage     | `New Sprint`,`Start Sprint`,`Complete Sprint`buttons |
+
+**My Work Page:**
+
+* Route: `/org/:slug/my-work` → `MyWorkPage`
+* Backend: `GET /organizations/{slug}/my-tasks` with `status_category`, `priority`, `skip`, `limit` filters
+* Status tabs: All / To Do / In Progress / Done
+* Priority filter dropdown
+* Archived project resolution: missing projects fetched individually via `getProjectApi` using `useQueries`
+* Task IDs formatted as `PROJECT_KEY-number` (e.g. `APP-6`, `WEB-21`)
+* Shows `…` while archived projects are still loading
+* Files: `MyWorkPage.tsx`, `src/styles/mywork.css`, `src/api/endpoints/tasks.ts` (`getMyTasksApi`)
+
+#### J2 — Empty States ✅
+
+| Page          | Empty state added                                                           |
+| ------------- | --------------------------------------------------------------------------- |
+| BoardPage     | "No tasks yet" + Create Task button (zero tasks)                            |
+| BoardPage     | "No tasks match your filters" + Clear filters button (filters hide all)     |
+| BacklogPage   | Polished with icon + better subtitle + New Sprint button (owner/admin only) |
+| DashboardPage | Already had all empty states ✅                                             |
+| WikiHomePage  | Already had full empty state ✅                                             |
+| WikiLayout    | Already had sidebar + tree empty states ✅                                  |
+| MyWorkPage    | Built with empty state from the start ✅                                    |
+
+* CSS added to `board.css`: `.board-empty`, `.board-empty-icon`, `.board-empty-title`, `.board-empty-sub`, `.board-empty-action`
+* CSS added to `backlog.css`: `.bl-empty-icon`, `.bl-empty-action` (polished existing rules)
+
+#### J3 — Error Boundaries ✅
+
+| File                                 | What was added                                                                 |
+| ------------------------------------ | ------------------------------------------------------------------------------ |
+| `src/components/ErrorBoundary.tsx` | Reusable boundary using `react-error-boundary`with `app`and `page`levels |
+| `src/main.tsx`                     | App-level boundary wraps entire app                                            |
+| `src/layouts/OrgLayout.tsx`        | Page-level boundary wraps `<Outlet />`only                                   |
+
+* Package: `react-error-boundary` (npm installed)
+* App-level: full screen takeover, "Something went wrong", Reload + Go home buttons
+* Page-level: sidebar/topbar stay intact, only content area shows error, Try again + Go home buttons
+* Dev mode: actual error message shown in red `<pre>` block in both levels
+* `Try again` button resets the boundary and re-renders the page
+
+#### J4 — Loading Skeletons Audit ✅
+
+| File                   | What was fixed/added                                                                      |
+| ---------------------- | ----------------------------------------------------------------------------------------- |
+| `PageEditorPage.tsx` | Rich skeleton matching real layout — breadcrumb, title, meta row, content lines          |
+| `WikiLayout.tsx`     | Page tree skeleton while `treeLoading`; empty/tree states gated behind `!treeLoading` |
+| `OrgLayout.tsx`      | Full shell skeleton using `position: fixed`matching real topbar/sidebar layout          |
+
+* OrgLayout skeleton uses `position: fixed` for topbar and sidebar (matching `.topbar` and `.sidebar` CSS) with `marginLeft` + `marginTop` on main content
+* WikiLayout: `isLoading: treeLoading` destructured from page tree query; 5-row skeleton with alternating indent
+* PageEditorPage: reuses existing wiki CSS classes (`wiki-page-shell`, `wiki-breadcrumb`, `wiki-page-title-wrap`, `wiki-page-meta`, `wiki-page-divider`) so skeleton matches real layout exactly
 
 #### Labels + ProjectSettingsPage ✅
 
@@ -828,7 +882,7 @@ frontend/src/
 │   ├── client.ts
 │   └── endpoints/
 │       ├── auth.ts, organizations.ts, projects.ts
-│       ├── tasks.ts          ✅ labels API added
+│       ├── tasks.ts          ✅ labels API + getMyTasksApi added
 │       ├── comments.ts, links.ts, activity.ts
 │       ├── search.ts         ✅ res.data.results fix
 │       └── wiki.ts
@@ -841,7 +895,11 @@ frontend/src/
 ├── styles/
 │   ├── tokens.css, globals.css, auth.css, wizard.css
 │   ├── layout.css            ✅ sidebar project settings btn
-│   ├── board.css, taskPanel.css, backlog.css, wiki.css
+│   ├── board.css             ✅ board empty state rules added
+│   ├── taskPanel.css
+│   ├── backlog.css           ✅ backlog empty state polished
+│   ├── wiki.css
+│   ├── mywork.css            ✅ new — My Work page styles
 │   ├── projectSettings.css   ✅ new
 │   ├── members.css           ✅ new
 │   └── settings.css          ✅ new
@@ -853,19 +911,22 @@ frontend/src/
 │   ├── DashboardPage, BoardPage, BacklogPage
 │   ├── WikiHomePage, PageEditorPage
 │   ├── OrgSettingsPage, MembersPage
+│   ├── MyWorkPage.tsx        ✅ new — cross-project task list
 │   ├── ProjectSettingsPage   ✅ new — labels management
 │   └── NotFoundPage
 ├── layouts/
-│   ├── OrgLayout.tsx, WikiLayout.tsx
+│   ├── OrgLayout.tsx         ✅ ErrorBoundary + fixed skeleton
+│   └── WikiLayout.tsx        ✅ page tree skeleton added
 ├── components/
 │   ├── ProtectedRoute.tsx
-│   ├── layout/Sidebar.tsx    ✅ gear icon for project settings
+│   ├── ErrorBoundary.tsx     ✅ new — app + page level boundaries
+│   ├── layout/Sidebar.tsx    ✅ gear icon + My Work nav link
 │   ├── layout/Topbar.tsx
 │   ├── board/TaskCard, SortableTaskCard, BoardColumn, CreateTaskModal
 │   ├── backlog/BacklogTaskRow, CreateSprintModal, StartSprintModal, CompleteSprintModal
 │   ├── wiki/PageTree, WikiEditor
 │   └── panel/TaskPanel
-└── App.tsx                   ✅ ProjectSettingsPage route added
+└── App.tsx                   ✅ ProjectSettingsPage + MyWorkPage routes added
 ```
 
 ---
@@ -898,6 +959,9 @@ frontend/src/
 * Members query shared/deduped across Sidebar, MembersPage, WikiLayout, BacklogPage
 * getLabelsApi returns `res.data.labels` (unwrapped from `{ labels, total }`)
 * task.labels may be undefined — always use `task.labels ?? []`
+* Error boundaries: react-error-boundary package; app-level in main.tsx, page-level in OrgLayout wrapping Outlet
+* OrgLayout skeleton uses position:fixed for topbar/sidebar to match real layout CSS
+* Gmail credentials must be env vars — GMAIL_USER and GMAIL_APP_PASSWORD in .env, never hardcoded
 
 ---
 
@@ -907,7 +971,7 @@ frontend/src/
 | ----------------------------- | --------------- | ------------------ |
 | test@example.com              | password123     | Owner of test-org  |
 | member@example.com            | password123     | Member of test-org |
-| ayushishahi14072004@gmail.com | password123     | Member of test-org |
+| ayushishahi14072004@gmail.com | (set as accept) | Member of test-org |
 | 23cse062@jssaten.ac.in        | (set at accept) | Member of test-org |
 
 * Org slug: `test-org`

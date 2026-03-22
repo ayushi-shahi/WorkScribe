@@ -17,6 +17,7 @@ import OrgCreatePage from '@/pages/OrgCreatePage'
 import DashboardPage from '@/pages/DashboardPage'
 import BoardPage from '@/pages/BoardPage'
 import BacklogPage from '@/pages/BacklogPage'
+import MyWorkPage from '@/pages/MyWorkPage'
 import WikiHomePage from '@/pages/WikiHomePage'
 import PageEditorPage from '@/pages/PageEditorPage'
 import OrgSettingsPage from '@/pages/OrgSettingsPage'
@@ -57,6 +58,7 @@ const router = createBrowserRouter([
     children: [
       { index: true, element: <Navigate to="dashboard" replace /> },
       { path: 'dashboard', element: <DashboardPage /> },
+      { path: 'my-work', element: <MyWorkPage /> },
       { path: 'projects/:key/board', element: <BoardPage /> },
       { path: 'projects/:key/backlog', element: <BacklogPage /> },
       { path: 'projects/:key/settings', element: <ProjectSettingsPage /> },
@@ -66,11 +68,8 @@ const router = createBrowserRouter([
         path: 'wiki',
         element: <WikiLayout />,
         children: [
-          // /org/:slug/wiki  →  WikiHomePage (no space selected)
           { index: true, element: <WikiHomePage /> },
-          // /org/:slug/wiki/:spaceId  →  WikiHomePage inside a space context
           { path: ':spaceId', element: <WikiHomePage /> },
-          // /org/:slug/wiki/:spaceId/:pageId  →  PageEditorPage
           { path: ':spaceId/:pageId', element: <PageEditorPage /> },
         ],
       },

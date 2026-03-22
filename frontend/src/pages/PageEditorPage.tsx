@@ -171,13 +171,39 @@ export default function PageEditorPage() {
 
   // ── Loading / empty states ───────────────────────────────────
   if (isLoading) {
-    return (
-      <div className="wiki-editor-loading">
-        <div className="wiki-editor-loading-bar" style={{ width: 200, marginBottom: 16 }} />
-        <div className="wiki-editor-loading-bar" style={{ width: 340, height: 44 }} />
+  return (
+    <div className="wiki-page-shell">
+      {/* Breadcrumb skeleton */}
+      <div className="wiki-breadcrumb">
+        <div className="skeleton" style={{ width: 80, height: 12, borderRadius: 4 }} />
+        <div className="skeleton" style={{ width: 120, height: 12, borderRadius: 4, marginLeft: 8 }} />
       </div>
-    )
-  }
+
+      {/* Title skeleton */}
+      <div className="wiki-page-title-wrap">
+        <div className="skeleton" style={{ width: '60%', height: 40, borderRadius: 6, marginTop: 8 }} />
+      </div>
+
+      {/* Meta row skeleton */}
+      <div className="wiki-page-meta" style={{ marginTop: 12 }}>
+        <div className="skeleton" style={{ width: 24, height: 24, borderRadius: '50%' }} />
+        <div className="skeleton" style={{ width: 140, height: 12, borderRadius: 4 }} />
+      </div>
+
+      <div className="wiki-page-divider" />
+
+      {/* Content skeleton */}
+      <div style={{ padding: '24px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div className="skeleton" style={{ width: '90%', height: 14, borderRadius: 4 }} />
+        <div className="skeleton" style={{ width: '75%', height: 14, borderRadius: 4 }} />
+        <div className="skeleton" style={{ width: '82%', height: 14, borderRadius: 4 }} />
+        <div className="skeleton" style={{ width: '60%', height: 14, borderRadius: 4 }} />
+        <div className="skeleton" style={{ width: '70%', height: 14, borderRadius: 4, marginTop: 8 }} />
+        <div className="skeleton" style={{ width: '85%', height: 14, borderRadius: 4 }} />
+      </div>
+    </div>
+  )
+}
 
   if (!page) return null
 

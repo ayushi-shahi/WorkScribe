@@ -202,7 +202,7 @@ function AssigneeDropdown({ currentAssigneeId, currentAssigneeName, slug, onSele
   const members = Array.isArray((membersData as any)?.members)
     ? (membersData as any).members
     : Array.isArray(membersData) ? membersData : []
-  const filtered = members.filter((m) =>
+  const filtered = members.filter((m: any) =>
     m.display_name.toLowerCase().includes(search.toLowerCase()) ||
     m.email.toLowerCase().includes(search.toLowerCase())
   )
@@ -254,7 +254,7 @@ function AssigneeDropdown({ currentAssigneeId, currentAssigneeName, slug, onSele
               <span className="tp-dropdown-item-label">Unassigned</span>
               {!currentAssigneeId && <Check size={11} className="tp-check" />}
             </button>
-            {filtered.map((m) => (
+            {filtered.map((m: any) => (
               <button
                 key={m.user_id}
                 className={`tp-dropdown-item${m.user_id === currentAssigneeId ? ' tp-dropdown-item--active' : ''}`}
@@ -322,7 +322,7 @@ function LinkDocModal({ slug, taskId, existingPageIds, onClose, onLinked }: Link
     },
   })
 
-  const filtered = results.filter((r) => !existingPageIds.includes(r.id))
+  const filtered = results.filter((r: any) => !existingPageIds.includes(r.id))
 
   return (
     <>
@@ -351,7 +351,7 @@ function LinkDocModal({ slug, taskId, existingPageIds, onClose, onLinked }: Link
           {debouncedQuery.length > 0 && !isFetching && filtered.length === 0 && (
             <div className="tp-link-modal-empty">No pages found</div>
           )}
-          {filtered.map((r) => (
+          {filtered.map((r: any) => (
             <button
               key={r.id}
               className="tp-link-modal-result"

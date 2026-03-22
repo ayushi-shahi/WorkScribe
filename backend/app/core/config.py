@@ -61,6 +61,16 @@ class Settings(BaseSettings):
         default="noreply@workflow.dev",
         description="From email address",
     )
+    
+    # Email - Gmail SMTP
+    GMAIL_USER: str = Field(
+        default="",
+        description="Gmail address used to send emails",
+    )
+    GMAIL_APP_PASSWORD: str = Field(
+        default="",
+        description="Gmail App Password (not your Gmail login password)",
+    )
 
     # CORS
     CORS_ORIGINS: list[str] = Field(

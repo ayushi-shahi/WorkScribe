@@ -15,21 +15,20 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-GMAIL_USER = "workscribe.noreply@gmail.com"
-GMAIL_APP_PASSWORD = "exontbbseofgtule"
-
-
 def _send_email_sync(to_email: str, subject: str, html: str) -> None:
     """Synchronous Gmail SMTP send — called from a thread via BackgroundTasks."""
+    gmail_user = settings.GMAIL_USER
+    gmail_password = settings.GMAIL_APP_PASSWORD
+    
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = f"WorkScribe <{GMAIL_USER}>"
+    msg["From"] = f"WorkScribe <{gmail_user}>"
     msg["To"] = to_email
     msg.attach(MIMEText(html, "html"))
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-        server.sendmail(GMAIL_USER, to_email, msg.as_string())
+        server.login(gmail_user, gmail_password)
+        server.sendmail(gmail_user, to_email, msg.as_string())
 
 
 def send_invitation_email(

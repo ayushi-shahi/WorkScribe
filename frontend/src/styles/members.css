@@ -346,8 +346,20 @@
 }
 
 .members-remove-btn:hover {
-  background: var(--red-bg);
+  background: rgba(248, 113, 113, 0.12);
   color: var(--red);
+}
+
+.members-remove-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Placeholder keeps row layout stable when remove button is not rendered */
+.members-remove-placeholder {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
 }
 
 /* ── Empty + skeleton ─────────────────────────────────────────────────────────── */

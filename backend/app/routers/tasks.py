@@ -27,6 +27,7 @@ from app.schemas.task import (
     CommentListResponse,
     CommentResponse,
     CommentUpdateRequest,
+    MyTasksResponse,
     TaskCreateRequest,
     TaskDetailResponse,
     TaskListResponse,
@@ -100,6 +101,41 @@ async def _resolve_task_org_with_member(
             detail={"code": "FORBIDDEN", "message": "Access denied"},
         )
     return task, task.org_id, member
+
+
+# ---------------------------------------------------------------------------
+# My Tasks (cross-project, assigned to current user)
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/organizations/{slug}/my-tasks",
+    response_model=MyTasksResponse,
+    summary="List all tasks assigned to the current user in this org",
+)
+async def list_my_tasks(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=50, ge=1, le=100),
+    status_category: str | None = Query(
+        default=None,
+        pattern="^(todo|in_progress|done)$",
+    ),
+    priority: str | None = Query(
+        default=None,
+        pattern="^(urgent|high|medium|low|none)$",
+    ),
+    org_and_member: tuple[Organization, OrgMember] = Depends(get_org_member),
+    current_user: User = Depends(get_current_user),
+    service: TaskService = Depends(get_task_service),
+) -> MyTasksResponse:
+    org, _ = org_and_member
+    return await service.list_my_tasks(
+        org_id=org.id,
+        user_id=current_user.id,
+        skip=skip,
+        limit=limit,
+        status_category=status_category,
+        priority=priority,
+    )
 
 
 # ---------------------------------------------------------------------------
