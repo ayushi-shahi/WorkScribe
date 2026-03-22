@@ -21,6 +21,7 @@ export interface Project {
   key: string
   description: string | null
   type: 'kanban' | 'scrum'
+  is_archived: boolean
   created_at: string
 }
 

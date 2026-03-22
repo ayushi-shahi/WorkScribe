@@ -465,8 +465,8 @@ const WikiEditor = forwardRef<WikiEditorHandle, WikiEditorProps>(
         }
       }
 
-  dom.addEventListener('keydown', handleKeyDown)
-  return () => dom.removeEventListener('keydown', handleKeyDown)
+  dom.addEventListener('keydown', handleKeyDown as EventListener)
+  return () => dom.removeEventListener('keydown', handleKeyDown as EventListener)
 }, [editor, editor?.isEditable, showSlashMenu])
     
 

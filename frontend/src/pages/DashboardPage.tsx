@@ -81,7 +81,7 @@ export default function DashboardPage() {
     staleTime: 30_000,
   })
 
-  const activities: OrgActivityEntry[] = activityData?.data ?? []
+  const activities: OrgActivityEntry[] = (activityData as any)?.data ?? activityData ?? []
 
   return (
     <div className="dash-root">

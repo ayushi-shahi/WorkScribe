@@ -199,7 +199,9 @@ function AssigneeDropdown({ currentAssigneeId, currentAssigneeName, slug, onSele
     staleTime: 60_000,
   })
 
-  const members = Array.isArray(membersData?.members) ? membersData.members : []
+  const members = Array.isArray((membersData as any)?.members)
+    ? (membersData as any).members
+    : Array.isArray(membersData) ? membersData : []
   const filtered = members.filter((m) =>
     m.display_name.toLowerCase().includes(search.toLowerCase()) ||
     m.email.toLowerCase().includes(search.toLowerCase())
@@ -700,7 +702,7 @@ export default function TaskPanel() {
     if (!editor || !task) return
     const draft = localStorage.getItem(DRAFT_KEY)
     const content = draft ? JSON.parse(draft) : (task.description_json ?? '')
-    editor.commands.setContent(content, false)
+    editor.commands.setContent(content ?? '')
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [task?.id, editor])
 
@@ -1128,7 +1130,9 @@ function ActivitySection({
   })
   const allSprints: SprintSummary[] = sprintQueries.flatMap(([, data]) => data?.sprints ?? [])
 
-  const members = Array.isArray(membersData?.members) ? membersData.members : []
+  const members = Array.isArray((membersData as any)?.members)
+    ? (membersData as any).members
+    : Array.isArray(membersData) ? membersData : []
   const entries: ActivityEntry[] = data?.activities ?? []
 
   if (entries.length === 0) return null
