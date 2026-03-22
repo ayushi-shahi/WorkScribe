@@ -1,11 +1,10 @@
-import { useRouteError, isRouteErrorResponse } from 'react-router-dom'
-import { ErrorBoundary as ReactErrorBoundary } from 'react-error-boundary'
+import { ErrorBoundary as ReactErrorBoundary, type FallbackProps } from 'react-error-boundary'
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react'
 import type { ReactNode } from 'react'
 
 // ── Fallback UIs ──────────────────────────────────────────────────────────────
 
-function AppFallback({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) {
+function AppFallback({ error, resetErrorBoundary }: FallbackProps) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -27,7 +26,7 @@ function AppFallback({ error, resetErrorBoundary }: { error: Error; resetErrorBo
           padding: '12px 16px', maxWidth: 560, overflow: 'auto',
           textAlign: 'left', lineHeight: 1.5, fontFamily: 'var(--font-mono)',
         }}>
-          {error.message}
+          {(error as Error).message}
         </pre>
       )}
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
@@ -61,7 +60,7 @@ function AppFallback({ error, resetErrorBoundary }: { error: Error; resetErrorBo
   )
 }
 
-function PageFallback({ error, resetErrorBoundary }: { error: Error; resetErrorBoundary: () => void }) {
+function PageFallback({ error, resetErrorBoundary }: FallbackProps) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center',
@@ -83,7 +82,7 @@ function PageFallback({ error, resetErrorBoundary }: { error: Error; resetErrorB
           padding: '10px 14px', maxWidth: 480, overflow: 'auto',
           textAlign: 'left', lineHeight: 1.5, fontFamily: 'var(--font-mono)',
         }}>
-          {error.message}
+          {(error as Error).message}
         </pre>
       )}
       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
