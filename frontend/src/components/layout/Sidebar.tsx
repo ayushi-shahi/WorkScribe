@@ -98,7 +98,7 @@ export default function Sidebar({ org }: SidebarProps) {
           {canManage && (
             <button
               className="sidebar-action-btn"
-              onClick={() => navigate(`/org/${slug}/projects/new`)}
+              onClick={() => window.dispatchEvent(new CustomEvent('sidebar:new-project'))}
               title="New project"
               aria-label="New project"
             >

@@ -1,5 +1,6 @@
 import { Outlet, useParams, Navigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import { useState, useEffect } from 'react'
 import { getOrgApi } from '@/api/endpoints/organizations'
 import { getMeApi } from '@/api/endpoints/auth'
 import { useAuthStore } from '@/stores/authStore'
@@ -8,6 +9,7 @@ import Sidebar from '@/components/layout/Sidebar'
 import Topbar from '@/components/layout/Topbar'
 import TaskPanel from '@/components/panel/TaskPanel'
 import CommandPalette from '@/components/CommandPalette'
+import CreateProjectModal from '@/components/board/CreateProjectModal'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import '@/styles/layout.css'
 
@@ -18,7 +20,15 @@ export default function OrgLayout() {
   const accessToken     = useAuthStore((s) => s.accessToken)
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
 
+  const [showCreateProject, setShowCreateProject] = useState(false)
+
   useWebSocket(isAuthenticated)
+
+  useEffect(() => {
+    const handler = () => setShowCreateProject(true)
+    window.addEventListener('sidebar:new-project', handler)
+    return () => window.removeEventListener('sidebar:new-project', handler)
+  }, [])
 
   useQuery({
     queryKey: ['me'],
@@ -129,6 +139,9 @@ export default function OrgLayout() {
       </main>
       <TaskPanel />
       <CommandPalette />
+      {showCreateProject && (
+        <CreateProjectModal onClose={() => setShowCreateProject(false)} />
+      )}
     </div>
   )
 }
