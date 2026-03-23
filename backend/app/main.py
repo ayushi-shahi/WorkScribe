@@ -16,7 +16,13 @@ from app.core.rate_limit import RateLimitMiddleware
 from app.routers.search import router as search_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.labels import router as labels_router
+from starlette.middleware.base import BaseHTTPMiddleware
 
+class CoopMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers["Cross-Origin-Opener-Policy"] = "unsafe-none"
+        return response
 
 
 @asynccontextmanager
@@ -50,7 +56,7 @@ app = FastAPI(
 # ── Middleware (order matters — added last runs first) ───────────────────────
 
 app.add_middleware(RateLimitMiddleware)
-
+app.add_middleware(CoopMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
