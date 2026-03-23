@@ -15,6 +15,7 @@ export default function CreateProjectModal({ onClose }: Props) {
   const [name, setName] = useState('')
   const [key, setKey] = useState('')
   const [keyTouched, setKeyTouched] = useState(false)
+  const [type, setType] = useState<'kanban' | 'scrum'>('kanban')
 
   const derivedKey = name
     .toUpperCase()
@@ -25,7 +26,7 @@ export default function CreateProjectModal({ onClose }: Props) {
 
   const { mutate, isPending } = useMutation({
     mutationFn: () =>
-      createProjectApi(slug ?? '', { name, key: displayKey }),
+      createProjectApi(slug ?? '', { name, key: displayKey, type }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects', slug] })
       toast.success('Project created')
@@ -69,6 +70,31 @@ export default function CreateProjectModal({ onClose }: Props) {
                 setKey(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))
               }}
             />
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <label style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Type</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {(['kanban', 'scrum'] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setType(t)}
+                  style={{
+                    flex: 1,
+                    padding: '8px 0',
+                    borderRadius: 6,
+                    border: `1px solid ${type === t ? 'var(--accent)' : 'var(--border)'}`,
+                    background: type === t ? 'var(--accent-subtle, var(--surface2))' : 'var(--surface2)',
+                    color: type === t ? 'var(--accent)' : 'var(--text-secondary)',
+                    fontSize: 13,
+                    cursor: 'pointer',
+                    textTransform: 'capitalize',
+                  }}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
