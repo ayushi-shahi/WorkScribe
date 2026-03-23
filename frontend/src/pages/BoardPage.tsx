@@ -170,7 +170,7 @@ const { data: projects = [], isLoading: projectsLoading } = useQuery({
   const { data: taskData, isLoading: tasksLoading } = useQuery({
     queryKey: boardQueryKey,
     queryFn: () => getTasksApi(slug ?? '', project?.id ?? '', taskFilters, 0, 100),
-    enabled: Boolean(slug && project?.id && statuses.length > 0),
+    enabled: Boolean(slug && project?.id),
     staleTime: 30_000,
   })
 
