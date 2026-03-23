@@ -5,6 +5,7 @@ import { AxiosError } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
 import { loginApi } from '@/api/endpoints/auth'
 import type { ApiError } from '@/types'
+import apiClient from '@/api/client'
 import '@/styles/auth.css'
 
 interface LocationState {
@@ -24,15 +25,19 @@ export default function LoginPage() {
 
   const { mutate, isPending, error } = useMutation({
     mutationFn: loginApi,
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       setAuth(data.access_token, data.user)
-      // Store refresh token in memory (B4 will manage this properly)
       sessionStorage.setItem('refresh_token', data.refresh_token)
-      // Redirect to intended page or org dashboard
       if (from && from.startsWith('/org/')) {
         navigate(from, { replace: true })
-      } else {
-        navigate(`/org/test-org/dashboard`, { replace: true })
+        return
+      }
+      try {
+        const orgsRes = await apiClient.get('/organizations')
+        const slug = orgsRes.data?.[0]?.slug
+        navigate(slug ? `/org/${slug}/dashboard` : '/create-org', { replace: true })
+      } catch {
+        navigate('/create-org', { replace: true })
       }
     },
   })

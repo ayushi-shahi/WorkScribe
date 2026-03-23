@@ -57,6 +57,20 @@ async def create_organization(
 ) -> OrganizationResponse:
     return await service.create_organization(data, current_user)
 
+# ---------------------------------------------------------------------------
+# List My Organizations
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "",
+    response_model=list[OrganizationResponse],
+    summary="List organizations for current user",
+)
+async def list_my_organizations(
+    current_user: User = Depends(get_current_user),
+    service: OrganizationService = Depends(get_org_service),
+) -> list[OrganizationResponse]:
+    return await service.list_user_organizations(current_user.id)
 
 # ---------------------------------------------------------------------------
 # Get Organization

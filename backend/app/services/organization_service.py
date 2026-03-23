@@ -40,9 +40,7 @@ class OrganizationService:
         self.redis = redis
         self.background_tasks = background_tasks
 
-    # -----------------------------------------------------------------------
     # Create Organization
-    # -----------------------------------------------------------------------
 
     async def create_organization(
         self, data: OrganizationCreateRequest, owner: User
@@ -70,9 +68,7 @@ class OrganizationService:
 
         return OrganizationResponse.model_validate(org)
 
-    # -----------------------------------------------------------------------
     # Get Organization
-    # -----------------------------------------------------------------------
 
     async def get_organization(self, slug: str) -> OrganizationResponse:
         result = await self.db.execute(
@@ -88,9 +84,7 @@ class OrganizationService:
 
         return OrganizationResponse.model_validate(org)
 
-    # -----------------------------------------------------------------------
     # Update Organization
-    # -----------------------------------------------------------------------
 
     async def update_organization(
         self, org: Organization, data: OrganizationUpdateRequest
@@ -113,9 +107,7 @@ class OrganizationService:
         await self.db.refresh(org)
         return OrganizationResponse.model_validate(org)
 
-    # -----------------------------------------------------------------------
     # List Members
-    # -----------------------------------------------------------------------
 
     async def list_members(self, org_id: UUID) -> MembersListResponse:
         result = await self.db.execute(
@@ -141,9 +133,7 @@ class OrganizationService:
 
         return MembersListResponse(members=members, total=len(members))
 
-    # -----------------------------------------------------------------------
     # Invite Member
-    # -----------------------------------------------------------------------
 
     async def invite_member(
         self, org: Organization, data: InviteRequest, inviter: User
@@ -223,9 +213,7 @@ class OrganizationService:
             is_expired=False,
         )
 
-    # -----------------------------------------------------------------------
     # Accept Invitation — no auth, match user by invitation email
-    # -----------------------------------------------------------------------
 
     async def accept_invitation_by_token(self, token: str) -> OrganizationResponse:
         """
@@ -303,9 +291,7 @@ class OrganizationService:
         org = org_result.scalar_one()
         return OrganizationResponse.model_validate(org)
 
-    # -----------------------------------------------------------------------
     # Accept Invitation — authenticated user variant (kept for future use)
-    # -----------------------------------------------------------------------
 
     async def accept_invitation(
         self, token: str, current_user: User
@@ -367,9 +353,7 @@ class OrganizationService:
         org = org_result.scalar_one()
         return OrganizationResponse.model_validate(org)
 
-    # -----------------------------------------------------------------------
     # Revoke Invitation
-    # -----------------------------------------------------------------------
 
     async def revoke_invitation(
         self, org_id: UUID, invitation_id: UUID
@@ -391,9 +375,7 @@ class OrganizationService:
         await self.db.delete(invitation)
         await self.db.flush()
 
-    # -----------------------------------------------------------------------
     # Update Member Role
-    # -----------------------------------------------------------------------
 
     async def update_member_role(
         self,
@@ -445,9 +427,7 @@ class OrganizationService:
             joined_at=target_member.joined_at,
         )
 
-    # -----------------------------------------------------------------------
     # Remove Member
-    # -----------------------------------------------------------------------
 
     async def remove_member(
         self,
@@ -483,3 +463,15 @@ class OrganizationService:
 
         await self.db.delete(target_member)
         await self.db.flush()
+        
+    # List User Organizations
+
+    async def list_user_organizations(self, user_id: UUID) -> list[OrganizationResponse]:
+        result = await self.db.execute(
+            select(Organization)
+            .join(OrgMember, OrgMember.org_id == Organization.id)
+            .where(OrgMember.user_id == user_id)
+            .order_by(Organization.created_at)
+        )
+        orgs = result.scalars().all()
+        return [OrganizationResponse.model_validate(o) for o in orgs]
