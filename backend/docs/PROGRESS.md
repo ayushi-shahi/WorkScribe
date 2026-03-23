@@ -1,9 +1,10 @@
 # WorkScribe — Progress Doc
 
-**Last Updated:** 2026-03-22
-**Latest Commit:** `feat: labels API + project settings UI + celery to backgroundtasks migration`
+**Last Updated:** 2026-03-23
+**Latest Commit:** `604754c fix: use verified workscribe.noreply@gmail.com as Brevo sender`
 **Alembic Head:** `d4e5f6a1b2c3` (create_notifications_table)
-**API:** `http://localhost:8001`
+**API (prod):** `https://workscribe-api.onrender.com`
+**Frontend (prod):** `https://work-scribe.vercel.app`
 
 ---
 
@@ -31,11 +32,11 @@
 | J2    | Empty states                | ✅ Complete & Tested |
 | J3    | Error boundaries            | ✅ Complete & Tested |
 | J4    | Loading skeletons audit     | ✅ Complete & Tested |
-| J5    | Production build + deploy   | ⬜ Next              |
+| J5    | Production build + deploy   | 🔄 In Progress       |
 | J6    | Performance optimization    | ⬜                   |
 
 **Backend: 100% complete.**
-**Frontend: All features complete through J4 — next: J5–J6 polish.**
+**Frontend: All features complete through J4. J5 deploy in progress — Vercel live, Render live, Brevo email suspended pending reactivation.**
 
 ---
 
@@ -80,7 +81,7 @@
 
 * `app/schemas/auth.py` — all auth request/response schemas
 * `app/core/security.py` — bcrypt password hash, JWT encode/decode
-* `app/workers/email_tasks.py` — plain functions: `send_invitation_email`, `send_password_reset_email` (Gmail SMTP, no Celery)
+* `app/workers/email_tasks.py` — plain functions: `send_invitation_email`, `send_password_reset_email` (Brevo HTTP API, no Celery)
 * `app/core/dependencies.py` — `get_current_user`, `get_org_member`, `require_role`
 
 ### Endpoints Tested ✅
@@ -94,6 +95,7 @@
 | POST   | `/api/v1/auth/forgot-password`            | Queue reset email (always 204)        |
 | POST   | `/api/v1/auth/reset-password`             | Validate token, update password       |
 | GET    | `/api/v1/auth/me`                         | Get current user profile              |
+| GET    | `/api/v1/auth/orgs`                       | List orgs the current user belongs to |
 | GET    | `/api/v1/auth/invitations/{token}`        | Get invite details (org, role, email) |
 | POST   | `/api/v1/auth/invitations/{token}/accept` | Accept org invitation + auto-login    |
 
@@ -127,7 +129,8 @@
 * Accept endpoint returns `TokenResponse` (auto-login after accept)
 * New users: must supply `display_name` + `password` in accept body
 * Existing users: just accepts, no extra fields needed
-* Email delivery: Gmail SMTP via `smtplib.SMTP_SSL("smtp.gmail.com", 465)`
+* Email delivery: Brevo HTTP API via `httpx.post` to `https://api.brevo.com/v3/smtp/email`
+* Sender: `workscribe.noreply@gmail.com` (verified in Brevo)
 
 ---
 
@@ -182,6 +185,7 @@
 | POST   | `/api/v1/organizations/{slug}/projects/{id}/tasks`   | Create task (auto-ID)                  |
 | GET    | `/api/v1/organizations/{slug}/projects/{id}/tasks`   | List tasks (filtered, paginated)       |
 | GET    | `/api/v1/organizations/{slug}/projects/{id}/backlog` | List backlog tasks (sprint_id IS NULL) |
+| GET    | `/api/v1/organizations/{slug}/my-tasks`              | List tasks assigned to current user    |
 | GET    | `/api/v1/tasks/{id}`                                 | Get task detail                        |
 | PATCH  | `/api/v1/tasks/{id}`                                 | Update task + activity log             |
 | DELETE | `/api/v1/tasks/{id}`                                 | Delete task                            |
@@ -350,7 +354,7 @@
 
 * `app/core/websocket.py` — `ConnectionManager` singleton
 * `app/workers/notification_tasks.py` — `dispatch_notification` plain async function (no Celery)
-* `app/workers/email_tasks.py` — `send_invitation_email`, `send_password_reset_email` plain functions (no Celery)
+* `app/workers/email_tasks.py` — `send_invitation_email`, `send_password_reset_email` plain functions (Brevo HTTP API)
 * `app/routers/websocket.py` — `WS /api/v1/ws?token={jwt}` endpoint
 
 ### Migration Notes
@@ -524,6 +528,68 @@ Default `limit=50`, max `limit=100`, enforced via `Query(ge=1, le=100)`.
 
 ---
 
+## J5 — Production Build + Deploy 🔄 In Progress
+
+### Frontend — Vercel ✅ Live
+
+* **URL:** `https://work-scribe.vercel.app`
+* Build: `vite build` from `frontend/` directory
+* SPA routing fixed via `vercel.json` at repo root with catch-all rewrite to `/index.html`
+* Multiple iterations to get routing right (7 commits from `2e83755` to `f7147a6`)
+* Final working config: `vercel.json` at repo root with explicit `buildCommand`, `outputDirectory`, and SPA rewrite rule
+* `CreateProjectModal` fix: added required `type` field (`e2d2963`)
+* Modal CSS fix: switched to `ctm-` modal classes to match design system (`1b321d4`)
+
+### Backend — Render ✅ Live
+
+* **Service:** `workscribe-api` on Render (Docker deploy)
+* Port binding fix: added `PORT=8000` env var in Render dashboard — Render's port scanner now detects it correctly
+* `Dockerfile` CMD: `["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]` (hardcoded port is fine since `PORT=8000` is set in Render env)
+
+### Email — Brevo ⚠️ Suspended
+
+* Switched from Gmail SMTP to Brevo HTTP API (`685b13d`)
+* `email_tasks.py` now uses `httpx.post` to `https://api.brevo.com/v3/smtp/email`
+* `config.py` updated: removed `GMAIL_USER` / `GMAIL_APP_PASSWORD`, added `BREVO_API_KEY`
+* Sender verified: `workscribe.noreply@gmail.com` (`604754c`)
+* Brevo account suspended immediately after signup (anti-spam false positive)
+* Support ticket #5279384 submitted — awaiting reactivation from Brevo (Avni, CX team)
+* Invite API returns 201 correctly; email send fails with `403 Forbidden` from Brevo until reactivated
+* No code changes needed once reactivated — everything is wired correctly
+
+### New Endpoint Added During J5
+
+| Method | Path                  | Description                               |
+| ------ | --------------------- | ----------------------------------------- |
+| GET    | `/api/v1/auth/orgs` | List all orgs the current user belongs to |
+
+* Added to fix login redirect — after login, frontend fetches user's orgs and redirects to first org (`39e796c`)
+* Required because users can belong to multiple orgs and the frontend needed a way to determine where to redirect
+
+### TypeScript Build Fixes (for Vercel deploy)
+
+* `13a9d3a` — resolved all TypeScript build errors
+* `925c3be` — fixed search type, unused vars, implicit any
+* `f026fb1` — fixed ErrorBoundary FallbackProps, added untracked files
+* `a0b411b` — fix in taskHelpers
+* `c4dfe69` — scoped `lib/` gitignore to backend only, added untracked frontend files
+
+### Environment Variables (Render — workscribe-api)
+
+| Key                                           | Value / Notes                               |
+| --------------------------------------------- | ------------------------------------------- |
+| `DATABASE_URL`                              | Render PostgreSQL internal URL              |
+| `REDIS_URL`                                 | Render Redis internal URL                   |
+| `JWT_SECRET_KEY`                            | min 32 chars                                |
+| `FRONTEND_URL`                              | `https://work-scribe.vercel.app`          |
+| `BREVO_API_KEY`                             | `xkeysib-...`(set, but account suspended) |
+| `PORT`                                      | `8000`                                    |
+| `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` | OAuth credentials                           |
+| `CORS_ORIGINS`                              | `["https://work-scribe.vercel.app"]`      |
+| `GMAIL_USER`/`GMAIL_APP_PASSWORD`         | **Deleted**— replaced by Brevo       |
+
+---
+
 ## Database Migration Chain
 
 ```
@@ -576,7 +642,8 @@ Default `limit=50`, max `limit=100`, enforced via `Query(ge=1, le=100)`.
 * Search response shape: `{ results: [], total: N, q: "" }` — frontend must use `res.data.results`
 * Page is_deleted filter: use `isnot(True)` not `is_(False)` to handle NULL rows
 * 204 endpoints: return `Response(status_code=204)` from function body — never use `response_class=Response` on decorator
-* Gmail credentials: `GMAIL_USER` and `GMAIL_APP_PASSWORD` must be set as env vars — never hardcode
+* Email: Brevo HTTP API via httpx — `BREVO_API_KEY` env var, sender `workscribe.noreply@gmail.com`
+* `GET /api/v1/auth/orgs` — used by frontend login redirect to determine which org to land on
 
 ---
 
@@ -618,71 +685,72 @@ Default `limit=50`, max `limit=100`, enforced via `Query(ge=1, le=100)`.
 
 # Frontend Progress
 
-Last Updated: 2026-03-22
+Last Updated: 2026-03-23
 Backend: 100% complete
 Frontend location: /frontend
 Dev server: http://localhost:5173
-Backend API: http://localhost:8001/api/v1
+Backend API (local): http://localhost:8001/api/v1
+Backend API (prod): https://workscribe-api.onrender.com/api/v1
 
 ### Frontend Status
 
-| Phase | Task                                                              | Status  |
-| ----- | ----------------------------------------------------------------- | ------- |
-| A1    | Vite + React 19 + TypeScript setup                                | ✅ Done |
-| A2    | CSS design tokens (tokens.css + globals.css)                      | ✅ Done |
-| A3    | Axios client (src/api/client.ts)                                  | ✅ Done |
-| A4    | Auth Zustand store (src/stores/authStore.ts)                      | ✅ Done |
-| A5    | React Router shell — all routes stubbed                          | ✅ Done |
-| A6    | ProtectedRoute + redirect logic                                   | ✅ Done |
-| B1    | /login page                                                       | ✅ Done |
-| B2    | /register page                                                    | ✅ Done |
-| B3    | /forgot-password + /reset-password                                | ✅ Done |
-| B4    | Token refresh interceptor (full)                                  | ✅ Done |
-| B5    | Org creation wizard                                               | ✅ Done |
-| B6    | Invitation accept page                                            | ✅ Done |
-| C1    | OrgLayout — topbar + sidebar + main                              | ✅ Done |
-| C2    | Sidebar (projects, wiki spaces, nav)                              | ✅ Done |
-| C3    | Topbar (logo, org switcher, search, notif bell, avatar)           | ✅ Done |
-| D1    | BoardPage — fetch tasks grouped by status                        | ✅ Done |
-| D2    | BoardColumn component                                             | ✅ Done |
-| D3    | TaskCard component                                                | ✅ Done |
-| D4    | Drag within column (reorder)                                      | ✅ Done |
-| D5    | Drag between columns (move + optimistic update + rollback)        | ✅ Done |
-| D6    | Board filter toolbar (Assignee / Priority / Label multi-select)   | ✅ Done |
-| D7    | CreateTaskModal (full field set, invalidates board on success)    | ✅ Done |
-| D8    | Quick-add inline (per-column inline input, Enter/Escape)          | ✅ Done |
-| E1    | TaskPanel slide-in shell + URL param sync                         | ✅ Done |
-| E2    | Inline-editable fields (dropdowns for status, priority, assignee) | ✅ Done |
-| E3    | Tiptap description editor + localStorage autosave                 | ✅ Done |
-| E4    | Comments + delete own comment + optimistic add                    | ✅ Done |
-| E5    | Activity log timeline                                             | ✅ Done |
-| E6    | Linked docs                                                       | ✅ Done |
-| E7    | Subtasks                                                          | ✅ Done |
-| F1    | BacklogPage (sprint sections + backlog section + inline create)   | ✅ Done |
-| F2    | BacklogTaskRow component                                          | ✅ Done |
-| F3    | Drag backlog ↔ sprint                                            | ✅ Done |
-| F4    | Create Sprint modal                                               | ✅ Done |
-| F5    | Start/Complete Sprint modals                                      | ✅ Done |
-| G1    | WikiLayout (3-column shell, spaces list, NewSpaceModal)           | ✅ Done |
-| G2    | PageTree (recursive dnd-kit tree, options menu, inline create)    | ✅ Done |
-| G3    | PageEditorPage shell (breadcrumb, editable title, meta row)       | ✅ Done |
-| G4    | Tiptap editor full                                                | ✅ Done |
-| G5    | Autosave + Save button + unsaved indicator                        | ✅ Done |
-| G6    | New Space + New Page wired end-to-end                             | ✅ Done |
-| H1    | useWebSocket hook                                                 | ✅ Done |
-| H2    | Notification bell + panel                                         | ✅ Done |
-| H3    | CommandPalette (Cmd+K)                                            | ✅ Done |
-| I1    | DashboardPage                                                     | ✅ Done |
-| I2    | MembersPage                                                       | ✅ Done |
-| I3    | OrgSettingsPage                                                   | ✅ Done |
-| J1    | RBAC audit + fixes + My Work page                                 | ✅ Done |
-| —    | Labels API + frontend + ProjectSettingsPage                       | ✅ Done |
-| —    | Celery → BackgroundTasks migration                               | ✅ Done |
-| J2    | Empty states                                                      | ✅ Done |
-| J3    | Error boundaries                                                  | ✅ Done |
-| J4    | Loading skeletons audit                                           | ✅ Done |
-| J5    | Production build + deploy                                         | ⬜ Next |
-| J6    | Performance optimization                                          | ⬜      |
+| Phase | Task                                                              | Status         |
+| ----- | ----------------------------------------------------------------- | -------------- |
+| A1    | Vite + React 19 + TypeScript setup                                | ✅ Done        |
+| A2    | CSS design tokens (tokens.css + globals.css)                      | ✅ Done        |
+| A3    | Axios client (src/api/client.ts)                                  | ✅ Done        |
+| A4    | Auth Zustand store (src/stores/authStore.ts)                      | ✅ Done        |
+| A5    | React Router shell — all routes stubbed                          | ✅ Done        |
+| A6    | ProtectedRoute + redirect logic                                   | ✅ Done        |
+| B1    | /login page                                                       | ✅ Done        |
+| B2    | /register page                                                    | ✅ Done        |
+| B3    | /forgot-password + /reset-password                                | ✅ Done        |
+| B4    | Token refresh interceptor (full)                                  | ✅ Done        |
+| B5    | Org creation wizard                                               | ✅ Done        |
+| B6    | Invitation accept page                                            | ✅ Done        |
+| C1    | OrgLayout — topbar + sidebar + main                              | ✅ Done        |
+| C2    | Sidebar (projects, wiki spaces, nav)                              | ✅ Done        |
+| C3    | Topbar (logo, org switcher, search, notif bell, avatar)           | ✅ Done        |
+| D1    | BoardPage — fetch tasks grouped by status                        | ✅ Done        |
+| D2    | BoardColumn component                                             | ✅ Done        |
+| D3    | TaskCard component                                                | ✅ Done        |
+| D4    | Drag within column (reorder)                                      | ✅ Done        |
+| D5    | Drag between columns (move + optimistic update + rollback)        | ✅ Done        |
+| D6    | Board filter toolbar (Assignee / Priority / Label multi-select)   | ✅ Done        |
+| D7    | CreateTaskModal (full field set, invalidates board on success)    | ✅ Done        |
+| D8    | Quick-add inline (per-column inline input, Enter/Escape)          | ✅ Done        |
+| E1    | TaskPanel slide-in shell + URL param sync                         | ✅ Done        |
+| E2    | Inline-editable fields (dropdowns for status, priority, assignee) | ✅ Done        |
+| E3    | Tiptap description editor + localStorage autosave                 | ✅ Done        |
+| E4    | Comments + delete own comment + optimistic add                    | ✅ Done        |
+| E5    | Activity log timeline                                             | ✅ Done        |
+| E6    | Linked docs                                                       | ✅ Done        |
+| E7    | Subtasks                                                          | ✅ Done        |
+| F1    | BacklogPage (sprint sections + backlog section + inline create)   | ✅ Done        |
+| F2    | BacklogTaskRow component                                          | ✅ Done        |
+| F3    | Drag backlog ↔ sprint                                            | ✅ Done        |
+| F4    | Create Sprint modal                                               | ✅ Done        |
+| F5    | Start/Complete Sprint modals                                      | ✅ Done        |
+| G1    | WikiLayout (3-column shell, spaces list, NewSpaceModal)           | ✅ Done        |
+| G2    | PageTree (recursive dnd-kit tree, options menu, inline create)    | ✅ Done        |
+| G3    | PageEditorPage shell (breadcrumb, editable title, meta row)       | ✅ Done        |
+| G4    | Tiptap editor full                                                | ✅ Done        |
+| G5    | Autosave + Save button + unsaved indicator                        | ✅ Done        |
+| G6    | New Space + New Page wired end-to-end                             | ✅ Done        |
+| H1    | useWebSocket hook                                                 | ✅ Done        |
+| H2    | Notification bell + panel                                         | ✅ Done        |
+| H3    | CommandPalette (Cmd+K)                                            | ✅ Done        |
+| I1    | DashboardPage                                                     | ✅ Done        |
+| I2    | MembersPage                                                       | ✅ Done        |
+| I3    | OrgSettingsPage                                                   | ✅ Done        |
+| J1    | RBAC audit + fixes + My Work page                                 | ✅ Done        |
+| —    | Labels API + frontend + ProjectSettingsPage                       | ✅ Done        |
+| —    | Celery → BackgroundTasks migration                               | ✅ Done        |
+| J2    | Empty states                                                      | ✅ Done        |
+| J3    | Error boundaries                                                  | ✅ Done        |
+| J4    | Loading skeletons audit                                           | ✅ Done        |
+| J5    | Production build + deploy                                         | 🔄 In Progress |
+| J6    | Performance optimization                                          | ⬜             |
 
 ---
 
@@ -705,7 +773,9 @@ Backend API: http://localhost:8001/api/v1
 * Local categoryColor() function — statusColor from taskHelpers not used here
 * PriorityValue / TypeValue explicit union types (not as const — causes setState mismatch)
 * On success: queryClient.invalidateQueries({ queryKey: ['board', slug] }) prefix invalidation
-* .ctm-modal { overflow: visible } — required to prevent dropdown clipping
+* `.ctm-modal { overflow: visible }` — required to prevent dropdown clipping
+* Uses `ctm-` CSS class prefix throughout to match design system
+* `type` field is required — must be included in form payload (`e2d2963`)
 * Escape key + overlay click close modal
 
 #### D8 — Quick-add Inline
@@ -851,6 +921,7 @@ const canManage = currentMember?.role === 'owner' || currentMember?.role === 'ad
 * Page-level: sidebar/topbar stay intact, only content area shows error, Try again + Go home buttons
 * Dev mode: actual error message shown in red `<pre>` block in both levels
 * `Try again` button resets the boundary and re-renders the page
+* `FallbackProps` import fixed during TypeScript build audit (`f026fb1`)
 
 #### J4 — Loading Skeletons Audit ✅
 
@@ -863,6 +934,14 @@ const canManage = currentMember?.role === 'owner' || currentMember?.role === 'ad
 * OrgLayout skeleton uses `position: fixed` for topbar and sidebar (matching `.topbar` and `.sidebar` CSS) with `marginLeft` + `marginTop` on main content
 * WikiLayout: `isLoading: treeLoading` destructured from page tree query; 5-row skeleton with alternating indent
 * PageEditorPage: reuses existing wiki CSS classes (`wiki-page-shell`, `wiki-breadcrumb`, `wiki-page-title-wrap`, `wiki-page-meta`, `wiki-page-divider`) so skeleton matches real layout exactly
+
+#### J5 — Production Deploy Fixes ✅ (ongoing)
+
+* Login redirect fix: after login, `GET /api/v1/auth/orgs` fetches user's org list, redirects to first org slug (`39e796c`)
+* All TypeScript strict errors resolved for Vercel build (`13a9d3a`, `925c3be`)
+* `vercel.json` at repo root — final working SPA rewrite config after 7 iterations
+* `CreateProjectModal` type field required bug fixed (`e2d2963`)
+* Modal CSS standardised to `ctm-` prefix (`1b321d4`)
 
 #### Labels + ProjectSettingsPage ✅
 
@@ -881,28 +960,29 @@ frontend/src/
 ├── api/
 │   ├── client.ts
 │   └── endpoints/
-│       ├── auth.ts, organizations.ts, projects.ts
-│       ├── tasks.ts          ✅ labels API + getMyTasksApi added
+│       ├── auth.ts               ✅ getOrgsApi added (for login redirect)
+│       ├── organizations.ts, projects.ts
+│       ├── tasks.ts              ✅ labels API + getMyTasksApi added
 │       ├── comments.ts, links.ts, activity.ts
-│       ├── search.ts         ✅ res.data.results fix
+│       ├── search.ts             ✅ res.data.results fix
 │       └── wiki.ts
 ├── stores/
 │   ├── authStore.ts, uiStore.ts
 ├── hooks/
 │   └── useBoardDnd.ts
 ├── lib/
-│   └── taskHelpers.ts
+│   └── taskHelpers.ts            ✅ fix applied (a0b411b)
 ├── styles/
 │   ├── tokens.css, globals.css, auth.css, wizard.css
-│   ├── layout.css            ✅ sidebar project settings btn
-│   ├── board.css             ✅ board empty state rules added
+│   ├── layout.css                ✅ sidebar project settings btn
+│   ├── board.css                 ✅ board empty state rules added
 │   ├── taskPanel.css
-│   ├── backlog.css           ✅ backlog empty state polished
+│   ├── backlog.css               ✅ backlog empty state polished
 │   ├── wiki.css
-│   ├── mywork.css            ✅ new — My Work page styles
-│   ├── projectSettings.css   ✅ new
-│   ├── members.css           ✅ new
-│   └── settings.css          ✅ new
+│   ├── mywork.css                ✅ new — My Work page styles
+│   ├── projectSettings.css       ✅ new
+│   ├── members.css               ✅ new
+│   └── settings.css              ✅ new
 ├── types/
 │   └── index.ts
 ├── pages/
@@ -911,22 +991,23 @@ frontend/src/
 │   ├── DashboardPage, BoardPage, BacklogPage
 │   ├── WikiHomePage, PageEditorPage
 │   ├── OrgSettingsPage, MembersPage
-│   ├── MyWorkPage.tsx        ✅ new — cross-project task list
-│   ├── ProjectSettingsPage   ✅ new — labels management
+│   ├── MyWorkPage.tsx            ✅ new — cross-project task list
+│   ├── ProjectSettingsPage       ✅ new — labels management
 │   └── NotFoundPage
 ├── layouts/
-│   ├── OrgLayout.tsx         ✅ ErrorBoundary + fixed skeleton
-│   └── WikiLayout.tsx        ✅ page tree skeleton added
+│   ├── OrgLayout.tsx             ✅ ErrorBoundary + fixed skeleton
+│   └── WikiLayout.tsx            ✅ page tree skeleton added
 ├── components/
 │   ├── ProtectedRoute.tsx
-│   ├── ErrorBoundary.tsx     ✅ new — app + page level boundaries
-│   ├── layout/Sidebar.tsx    ✅ gear icon + My Work nav link
+│   ├── ErrorBoundary.tsx         ✅ new — app + page level boundaries
+│   ├── layout/Sidebar.tsx        ✅ gear icon + My Work nav link
 │   ├── layout/Topbar.tsx
 │   ├── board/TaskCard, SortableTaskCard, BoardColumn, CreateTaskModal
 │   ├── backlog/BacklogTaskRow, CreateSprintModal, StartSprintModal, CompleteSprintModal
 │   ├── wiki/PageTree, WikiEditor
 │   └── panel/TaskPanel
-└── App.tsx                   ✅ ProjectSettingsPage + MyWorkPage routes added
+├── App.tsx                       ✅ ProjectSettingsPage + MyWorkPage routes added
+vercel.json                       ✅ repo root — SPA rewrite for Vercel
 ```
 
 ---
@@ -961,7 +1042,12 @@ frontend/src/
 * task.labels may be undefined — always use `task.labels ?? []`
 * Error boundaries: react-error-boundary package; app-level in main.tsx, page-level in OrgLayout wrapping Outlet
 * OrgLayout skeleton uses position:fixed for topbar/sidebar to match real layout CSS
-* Gmail credentials must be env vars — GMAIL_USER and GMAIL_APP_PASSWORD in .env, never hardcoded
+* CreateTaskModal uses `ctm-` CSS class prefix — do not mix with generic modal classes
+* CreateTaskModal requires `type` field in payload — omitting it causes 422
+* vercel.json must be at repo root (not frontend/) with explicit buildCommand + outputDirectory + SPA rewrite
+* Login redirect uses GET /api/v1/auth/orgs to find the user's first org slug
+* Email: Brevo HTTP API, sender workscribe.noreply@gmail.com, BREVO_API_KEY env var
+* Render: PORT=8000 must be set as env var for port scanner to detect the service
 
 ---
 
@@ -971,7 +1057,7 @@ frontend/src/
 | ----------------------------- | --------------- | ------------------ |
 | test@example.com              | password123     | Owner of test-org  |
 | member@example.com            | password123     | Member of test-org |
-| ayushishahi14072004@gmail.com | (set as accept) | Member of test-org |
+| ayushishahi14072004@gmail.com | (set at accept) | Member of test-org |
 | 23cse062@jssaten.ac.in        | (set at accept) | Member of test-org |
 
 * Org slug: `test-org`
