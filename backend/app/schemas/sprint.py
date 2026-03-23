@@ -33,7 +33,7 @@ class SprintUpdateRequest(BaseModel):
 class SprintCompleteRequest(BaseModel):
     """Request body for POST /sprints/{sprint_id}/complete."""
 
-    incomplete_action: str = Field(pattern="^(backlog|sprint)$")
+    incomplete_action: str = Field(default="backlog", pattern="^(backlog|sprint)$")
     target_sprint_id: UUID | None = None
 
 
