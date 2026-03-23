@@ -167,7 +167,7 @@ const { data: projects = [], isLoading: projectsLoading } = useQuery({
   const boardQueryKey = ['board', slug, project?.id, sprintId]
   const taskFilters = sprintId === 'all' ? {} : { sprint_id: sprintId }
 
-  const { data: taskData, isLoading: tasksLoading } = useQuery({
+  const { data: taskData, isLoading: tasksLoading, isPending } = useQuery({
     queryKey: boardQueryKey,
     queryFn: () => getTasksApi(slug ?? '', project?.id ?? '', taskFilters, 0, 100),
     enabled: Boolean(slug && project?.id),
@@ -254,7 +254,7 @@ const { data: projects = [], isLoading: projectsLoading } = useQuery({
     // wired in D8
   }
 
-  if (projectsLoading || !project || tasksLoading) return <BoardSkeleton />
+  if (projectsLoading || !project || (tasksLoading && !taskData)) return <BoardSkeleton />
 
   return (
     <>
