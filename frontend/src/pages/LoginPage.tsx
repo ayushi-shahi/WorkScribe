@@ -2,11 +2,11 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
+import { useGoogleLogin } from '@react-oauth/google'
 import { useAuthStore } from '@/stores/authStore'
 import { loginApi } from '@/api/endpoints/auth'
 import type { ApiError } from '@/types'
 import apiClient from '@/api/client'
-import { GoogleLogin } from '@react-oauth/google'
 import '@/styles/auth.css'
 
 interface LocationState {
@@ -23,6 +23,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({})
+  const [googleError, setGoogleError] = useState<string | null>(null)
 
   const { mutate, isPending, error } = useMutation({
     mutationFn: loginApi,
@@ -34,13 +35,32 @@ export default function LoginPage() {
         return
       }
       try {
-        const orgsRes = await apiClient.get('/organizations')
+        const orgsRes = await apiClient.get('/auth/orgs')
         const slug = orgsRes.data?.[0]?.slug
         navigate(slug ? `/org/${slug}/dashboard` : '/create-org', { replace: true })
       } catch {
         navigate('/create-org', { replace: true })
       }
     },
+  })
+
+  const googleLogin = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      try {
+        setGoogleError(null)
+        const res = await apiClient.post('/auth/oauth/google', {
+          id_token: tokenResponse.access_token,
+        })
+        setAuth(res.data.access_token, res.data.user)
+        sessionStorage.setItem('refresh_token', res.data.refresh_token)
+        const orgsRes = await apiClient.get('/auth/orgs')
+        const slug = orgsRes.data?.[0]?.slug
+        navigate(slug ? `/org/${slug}/dashboard` : '/create-org', { replace: true })
+      } catch {
+        setGoogleError('Google sign-in failed. Please try again.')
+      }
+    },
+    onError: () => setGoogleError('Google sign-in failed. Please try again.'),
   })
 
   const validate = (): boolean => {
@@ -144,31 +164,28 @@ export default function LoginPage() {
           <span>or</span>
         </div>
 
+        {/* Google error */}
+        {googleError && (
+          <div className="auth-error-banner" style={{ marginBottom: 8 }}>
+            {googleError}
+          </div>
+        )}
+
         {/* Google OAuth */}
-        <div className="auth-google-wrapper">
-          <GoogleLogin
-            onSuccess={async (credentialResponse) => {
-              if (!credentialResponse.credential) return
-              try {
-                const res = await apiClient.post('/auth/oauth/google', {
-                  id_token: credentialResponse.credential,
-                })
-                setAuth(res.data.access_token, res.data.user)
-                sessionStorage.setItem('refresh_token', res.data.refresh_token)
-                const orgsRes = await apiClient.get('/auth/orgs')
-                const slug = orgsRes.data?.[0]?.slug
-                navigate(slug ? `/org/${slug}/dashboard` : '/create-org', { replace: true })
-              } catch {
-                // silently ignore — user stays on login page
-              }
-            }}
-            onError={() => console.error('Google login failed')}
-            width="360"
-            theme="filled_black"
-            shape="rectangular"
-            text="continue_with"
-          />
-        </div>
+        <button
+          type="button"
+          className="auth-btn-google"
+          onClick={() => googleLogin()}
+          disabled={isPending}
+        >
+          <svg width="18" height="18" viewBox="0 0 48 48">
+            <path fill="#FFC107" d="M43.6 20H24v8h11.3C33.6 33.1 29.3 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.5 29.3 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20c11 0 20-8 20-20 0-1.3-.1-2.7-.4-4z"/>
+            <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 16 19 13 24 13c3 0 5.8 1.1 7.9 3l5.7-5.7C34.1 6.5 29.3 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+            <path fill="#4CAF50" d="M24 44c5.2 0 9.9-1.8 13.6-4.7l-6.3-5.2C29.5 35.6 26.9 36 24 36c-5.2 0-9.7-2.9-11.9-7.2l-6.5 5C9.5 40 16.3 44 24 44z"/>
+            <path fill="#1976D2" d="M43.6 20H24v8h11.3c-.8 2.3-2.3 4.2-4.3 5.5l6.3 5.2C41.5 35.3 44 30 44 24c0-1.3-.1-2.7-.4-4z"/>
+          </svg>
+          Continue with Google
+        </button>
 
         {/* Footer */}
         <div className="auth-footer">

@@ -211,9 +211,13 @@
   padding: 10px;
   border-radius: 8px;
   border: 1px solid var(--border);
-  background: transparent;
+  background: var(--surface-2);
   color: var(--text-primary);
   font-size: 0.9rem;
+  font-weight: 500;
   cursor: pointer;
   transition: background 0.15s;
+}
+.auth-btn-google:hover {
+  background: var(--surface-3, #2a2a3a);
 }
