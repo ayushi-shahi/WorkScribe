@@ -139,7 +139,7 @@ export default function BoardPage() {
 
   // ── Queries ────────────────────────────────────────────────────────────────
 
-  const { data: projects = [] } = useQuery({
+const { data: projects = [], isLoading: projectsLoading } = useQuery({
     queryKey: ['projects', slug],
     queryFn: () => getProjectsApi(slug ?? ''),
     enabled: !!slug,
@@ -254,8 +254,7 @@ export default function BoardPage() {
     // wired in D8
   }
 
-  if (!project) return null
-  if (tasksLoading) return <BoardSkeleton />
+  if (projectsLoading || !project || tasksLoading) return <BoardSkeleton />
 
   return (
     <>
