@@ -54,9 +54,8 @@ app = FastAPI(
 )
 
 # ── Middleware (order matters — added last runs first) ───────────────────────
-
-app.add_middleware(RateLimitMiddleware)
 app.add_middleware(CoopMiddleware)
+app.add_middleware(RateLimitMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
