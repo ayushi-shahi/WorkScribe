@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { loginApi } from '@/api/endpoints/auth'
 import type { ApiError } from '@/types'
 import apiClient from '@/api/client'
+import { GoogleLogin } from '@react-oauth/google'
 import '@/styles/auth.css'
 
 interface LocationState {
@@ -137,6 +138,37 @@ export default function LoginPage() {
             {isPending ? 'Signing in…' : 'Sign in'}
           </button>
         </form>
+
+        {/* Divider */}
+        <div className="auth-divider">
+          <span>or</span>
+        </div>
+
+        {/* Google OAuth */}
+        <div className="auth-google-wrapper">
+          <GoogleLogin
+            onSuccess={async (credentialResponse) => {
+              if (!credentialResponse.credential) return
+              try {
+                const res = await apiClient.post('/auth/oauth/google', {
+                  id_token: credentialResponse.credential,
+                })
+                setAuth(res.data.access_token, res.data.user)
+                sessionStorage.setItem('refresh_token', res.data.refresh_token)
+                const orgsRes = await apiClient.get('/auth/orgs')
+                const slug = orgsRes.data?.[0]?.slug
+                navigate(slug ? `/org/${slug}/dashboard` : '/create-org', { replace: true })
+              } catch {
+                // silently ignore — user stays on login page
+              }
+            }}
+            onError={() => console.error('Google login failed')}
+            width="360"
+            theme="filled_black"
+            shape="rectangular"
+            text="continue_with"
+          />
+        </div>
 
         {/* Footer */}
         <div className="auth-footer">
