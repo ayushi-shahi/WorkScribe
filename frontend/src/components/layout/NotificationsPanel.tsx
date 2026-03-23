@@ -9,6 +9,7 @@ import {
   markAllNotificationsReadApi,
   type NotificationListResponse,
 } from '@/api/endpoints/notifications'
+import { getProjectsApi } from '@/api/endpoints/projects'
 import { useUIStore } from '@/stores/uiStore'
 import type { Notification } from '@/types'
 
@@ -19,6 +20,13 @@ export default function NotificationsPanel() {
   const isOpen      = useUIStore((s) => s.isNotificationsPanelOpen)
   const close       = useUIStore((s) => s.closeNotificationsPanel)
   const panelRef    = useRef<HTMLDivElement>(null)
+
+  const { data: projectsData } = useQuery({
+    queryKey: ['projects', slug],
+    queryFn: () => getProjectsApi(slug ?? ''),
+    enabled: !!slug,
+    staleTime: 60_000,
+  })
 
   // Close on outside click
   useEffect(() => {
@@ -96,7 +104,22 @@ export default function NotificationsPanel() {
   function handleNotificationClick(n: Notification) {
     if (!n.is_read) markRead(n.id)
     if (n.entity_type === 'task' && slug) {
-      navigate(`/org/${slug}/projects/APP/board?task=${n.entity_id}`)
+      // Try to find project key from board cache first
+      const allBoardQueries = queryClient.getQueriesData<{ tasks: Array<{ id: string; task_id: string }> }>({ queryKey: ['board', slug] })
+      let projectKey: string | null = null
+      for (const [, data] of allBoardQueries) {
+        const found = data?.tasks?.find((t) => t.id === n.entity_id)
+        if (found) {
+          const match = found.task_id.match(/^(.+)-\d+$/)
+          if (match) { projectKey = match[1]; break }
+        }
+      }
+      // Fall back to first project from projects cache
+      if (!projectKey) {
+        const projects = projectsData ?? []
+        projectKey = projects[0]?.key ?? 'APP'
+      }
+      navigate(`/org/${slug}/projects/${projectKey}/board?task=${n.entity_id}`)
     } else if (n.entity_type === 'page' && slug) {
       navigate(`/org/${slug}/wiki`)
     }
