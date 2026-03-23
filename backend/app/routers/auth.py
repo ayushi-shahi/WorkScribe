@@ -363,3 +363,26 @@ async def get_invitation_details(
         email=invitation.email,
         inviter_name=inviter.display_name if inviter else "Someone",
     )
+    
+# ---------------------------------------------------------------------------
+# Get user's orgs (for post-login redirect)
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/orgs",
+    summary="List orgs the current user belongs to",
+)
+async def get_user_orgs(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[dict]:
+    from app.models.member import OrgMember
+    from app.models.organization import Organization
+
+    result = await db.execute(
+        select(Organization)
+        .join(OrgMember, OrgMember.org_id == Organization.id)
+        .where(OrgMember.user_id == current_user.id)
+    )
+    orgs = result.scalars().all()
+    return [{"id": str(o.id), "name": o.name, "slug": o.slug} for o in orgs]
