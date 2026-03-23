@@ -186,6 +186,12 @@
   color: var(--brand-hover);
 }
 
+.auth-google-wrapper {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+}
+
 .auth-divider {
   display: flex;
   align-items: center;
