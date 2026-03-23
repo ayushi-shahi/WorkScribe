@@ -15,8 +15,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 BREVO_URL = "https://api.brevo.com/v3/smtp/email"
-SENDER = {"name": "WorkScribe", "email": "noreply@workscribe.app"}
-
+SENDER = {"name": "WorkScribe", "email": "workscribe.noreply@gmail.com"}
 
 def _send(to_email: str, subject: str, html: str) -> None:
     """Send email via Brevo HTTP API."""
