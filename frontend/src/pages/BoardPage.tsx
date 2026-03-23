@@ -254,8 +254,7 @@ const { data: projects = [], isLoading: projectsLoading } = useQuery({
     // wired in D8
   }
 
-  if (projectsLoading || !project || (tasksLoading && !taskData)) return <BoardSkeleton />
-
+  if (projectsLoading || !project) return <BoardSkeleton />
   return (
     <>
       <DndContext
