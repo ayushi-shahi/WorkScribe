@@ -52,24 +52,14 @@ class Settings(BaseSettings):
         description="Google OAuth redirect URI",
     )
 
-    # Email
-    RESEND_API_KEY: str = Field(
+    # Email - Brevo
+    BREVO_API_KEY: str = Field(
         default="",
-        description="Resend API key for sending emails",
+        description="Brevo API key for sending transactional emails",
     )
     EMAIL_FROM: str = Field(
-        default="noreply@workflow.dev",
+        default="noreply@workscribe.app",
         description="From email address",
-    )
-    
-    # Email - Gmail SMTP
-    GMAIL_USER: str = Field(
-        default="",
-        description="Gmail address used to send emails",
-    )
-    GMAIL_APP_PASSWORD: str = Field(
-        default="",
-        description="Gmail App Password (not your Gmail login password)",
     )
 
     # CORS
