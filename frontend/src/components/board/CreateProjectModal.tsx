@@ -21,7 +21,7 @@ export default function CreateProjectModal({ onClose }: Props) {
   const derivedKey = name
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '')
-    .slice(0, 6)
+    .slice(0, 5)
 
   const displayKey = keyTouched ? key : derivedKey
 
@@ -78,7 +78,7 @@ export default function CreateProjectModal({ onClose }: Props) {
               value={displayKey}
               onChange={(e) => {
                 setKeyTouched(true)
-                setKey(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 6))
+                setKey(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 5))
               }}
               style={{ fontSize: 14, padding: '8px 0', resize: 'none', fontFamily: 'var(--font-mono)' }}
             />
