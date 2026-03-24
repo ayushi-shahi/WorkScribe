@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useNavigate, useSearchParams, useParams } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { X, ExternalLink, ChevronDown, Check, Send, Trash2, FileText, Plus, Link2, CheckSquare, Square } from 'lucide-react'
+import { X, ChevronDown, Check, Send, Trash2, FileText, Plus, Link2, CheckSquare, Square } from 'lucide-react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -819,13 +819,6 @@ export default function TaskPanel() {
         <div className="task-panel-topbar">
           <span className="task-panel-id">{displayTaskId}</span>
           <div className="task-panel-spacer" />
-          <button
-            className="task-panel-icon-btn"
-            title="Open in new tab"
-            onClick={() => window.open(window.location.href, '_blank')}
-          >
-            <ExternalLink size={14} />
-          </button>
           <button className="task-panel-icon-btn" title="Close" onClick={close}>
             <X size={15} />
           </button>
