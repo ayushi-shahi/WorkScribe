@@ -1,3 +1,4 @@
+<div align="center">
 # WorkScribe
 
 ### Project Management & Team Wiki, Unified
@@ -6,8 +7,11 @@ WorkScribe is a full-stack project management platform that brings task tracking
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-work--scribe.vercel.app-5E6AD2?style=for-the-badge)](https://work-scribe.vercel.app/)
 [![Backend](https://img.shields.io/badge/API-workscribe--api.onrender.com-10B981?style=for-the-badge)](https://workscribe-api.onrender.com/)
-[![License](https://img.shields.io/badge/License-MIT-gray?style=for-the-badge)
-](https://claude.ai/chat/fb1ad488-be53-4557-84ab-46342a89b4bf#license)
+[![License](https://img.shields.io/badge/License-MIT-gray?style=for-the-badge)](https://claude.ai/chat/fb1ad488-be53-4557-84ab-46342a89b4bf#license)
+
+</div>
+---
+
 
 ---
 
@@ -229,9 +233,12 @@ Frontend available at `http://localhost:5173`
 ## API Reference
 
 Interactive API documentation is available at:
-******[**workscribe-api.onrender.com/docs**](**https://workscribe-api.onrender.com/docs**)******
+
+**[workscribe-api.onrender.com/docs](https://workscribe-api.onrender.com/docs)**
 
 Built with FastAPI — all endpoints are fully documented with request/response schemas, authentication requirements, and live testing support.
+
+---
 
 ## Project Structure
 
