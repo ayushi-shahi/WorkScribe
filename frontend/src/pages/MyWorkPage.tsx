@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, memo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueries } from '@tanstack/react-query'
 import { CheckSquare } from 'lucide-react'
@@ -81,7 +81,8 @@ interface TaskRowProps {
   onOpen: () => void
 }
 
-function TaskRow({ task, projectKey, onOpen }: TaskRowProps) {
+// memo prevents re-render when sibling rows or parent state changes
+const TaskRow = memo(function TaskRow({ task, projectKey, onOpen }: TaskRowProps) {
   const taskId = task.task_id ?? `${projectKey}-${task.number}`
 
   return (
@@ -130,7 +131,7 @@ function TaskRow({ task, projectKey, onOpen }: TaskRowProps) {
       </span>
     </div>
   )
-}
+})
 
 // ── MyWorkPage ────────────────────────────────────────────────────────────────
 
@@ -161,7 +162,8 @@ export default function MyWorkPage() {
         limit: 100,
       }),
     enabled: !!slug,
-    staleTime: 30_000,
+    staleTime: 60_000,  // was 30s — no need to refetch on every tab switch
+    gcTime: 120_000,    // keep in cache 2 min after unmount so back-navigation is instant
   })
 
   const tasks = data?.tasks ?? []
@@ -194,7 +196,8 @@ export default function MyWorkPage() {
       queryKey: ['project', slug, projectId],
       queryFn: () => getProjectApi(slug ?? '', projectId),
       enabled: !!slug && missingProjectIds.length > 0,
-      staleTime: 120_000,
+      staleTime: 300_000,  // archived projects don't change — cache for 5 min
+      gcTime: 600_000,     // keep in memory 10 min so repeat visits are instant
     })),
   })
 

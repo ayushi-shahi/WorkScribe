@@ -1,13 +1,18 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from 'react'
 import { useParams, useOutletContext, Link } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { ChevronRight, Clock, Save } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { getPageApi, updatePageApi } from '@/api/endpoints/wiki'
-import WikiEditor, { clearDraft, type WikiEditorHandle } from '@/components/wiki/WikiEditor'
+import { clearDraft } from '@/components/wiki/WikiEditor'
+import type { WikiEditorHandle } from '@/components/wiki/WikiEditor'
 import type { WikiSpace, Page } from '@/types'
 import type { PageTreeNode } from '@/api/endpoints/wiki'
 import '@/styles/wiki.css'
+
+// Lazy-load the heavy Tiptap editor — page shell renders instantly,
+// editor bundle loads in the background
+const WikiEditor = lazy(() => import('@/components/wiki/WikiEditor'))
 
 // ── Outlet context ─────────────────────────────────────────────────────────────
 
@@ -15,6 +20,21 @@ interface WikiOutletContext {
   spaces: WikiSpace[]
   pageTree: PageTreeNode[]
   activeSpace: WikiSpace | null
+}
+
+// ── Editor skeleton shown while WikiEditor bundle loads ────────────────────────
+
+function EditorSkeleton() {
+  return (
+    <div style={{ padding: '24px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="skeleton" style={{ width: '90%', height: 14, borderRadius: 4 }} />
+      <div className="skeleton" style={{ width: '75%', height: 14, borderRadius: 4 }} />
+      <div className="skeleton" style={{ width: '82%', height: 14, borderRadius: 4 }} />
+      <div className="skeleton" style={{ width: '60%', height: 14, borderRadius: 4 }} />
+      <div className="skeleton" style={{ width: '70%', height: 14, borderRadius: 4, marginTop: 8 }} />
+      <div className="skeleton" style={{ width: '85%', height: 14, borderRadius: 4 }} />
+    </div>
+  )
 }
 
 // ── PageEditorPage ─────────────────────────────────────────────────────────────
@@ -93,7 +113,6 @@ export default function PageEditorPage() {
   const contentSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // isDirty: true once user has typed something not yet confirmed saved
   const [isDirty, setIsDirty] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [savedFlash, setSavedFlash] = useState(false)
@@ -113,7 +132,6 @@ export default function PageEditorPage() {
     },
     onError: () => {
       setIsSaving(false)
-      // keep isDirty=true so user can retry
     },
   })
 
@@ -157,9 +175,7 @@ export default function PageEditorPage() {
   useEffect(() => {
     const base = 'WorkScribe'
     document.title = isDirty ? `• ${base}` : base
-    return () => {
-      document.title = base
-    }
+    return () => { document.title = base }
   }, [isDirty])
 
   // Reset dirty state when navigating to a different page
@@ -169,41 +185,26 @@ export default function PageEditorPage() {
     setSavedFlash(false)
   }, [pageId])
 
-  // ── Loading / empty states ───────────────────────────────────
+  // ── Loading skeleton ─────────────────────────────────────────
   if (isLoading) {
-  return (
-    <div className="wiki-page-shell">
-      {/* Breadcrumb skeleton */}
-      <div className="wiki-breadcrumb">
-        <div className="skeleton" style={{ width: 80, height: 12, borderRadius: 4 }} />
-        <div className="skeleton" style={{ width: 120, height: 12, borderRadius: 4, marginLeft: 8 }} />
+    return (
+      <div className="wiki-page-shell">
+        <div className="wiki-breadcrumb">
+          <div className="skeleton" style={{ width: 80, height: 12, borderRadius: 4 }} />
+          <div className="skeleton" style={{ width: 120, height: 12, borderRadius: 4, marginLeft: 8 }} />
+        </div>
+        <div className="wiki-page-title-wrap">
+          <div className="skeleton" style={{ width: '60%', height: 40, borderRadius: 6, marginTop: 8 }} />
+        </div>
+        <div className="wiki-page-meta" style={{ marginTop: 12 }}>
+          <div className="skeleton" style={{ width: 24, height: 24, borderRadius: '50%' }} />
+          <div className="skeleton" style={{ width: 140, height: 12, borderRadius: 4 }} />
+        </div>
+        <div className="wiki-page-divider" />
+        <EditorSkeleton />
       </div>
-
-      {/* Title skeleton */}
-      <div className="wiki-page-title-wrap">
-        <div className="skeleton" style={{ width: '60%', height: 40, borderRadius: 6, marginTop: 8 }} />
-      </div>
-
-      {/* Meta row skeleton */}
-      <div className="wiki-page-meta" style={{ marginTop: 12 }}>
-        <div className="skeleton" style={{ width: 24, height: 24, borderRadius: '50%' }} />
-        <div className="skeleton" style={{ width: 140, height: 12, borderRadius: 4 }} />
-      </div>
-
-      <div className="wiki-page-divider" />
-
-      {/* Content skeleton */}
-      <div style={{ padding: '24px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div className="skeleton" style={{ width: '90%', height: 14, borderRadius: 4 }} />
-        <div className="skeleton" style={{ width: '75%', height: 14, borderRadius: 4 }} />
-        <div className="skeleton" style={{ width: '82%', height: 14, borderRadius: 4 }} />
-        <div className="skeleton" style={{ width: '60%', height: 14, borderRadius: 4 }} />
-        <div className="skeleton" style={{ width: '70%', height: 14, borderRadius: 4, marginTop: 8 }} />
-        <div className="skeleton" style={{ width: '85%', height: 14, borderRadius: 4 }} />
-      </div>
-    </div>
-  )
-}
+    )
+  }
 
   if (!page) return null
 
@@ -257,13 +258,10 @@ export default function PageEditorPage() {
         <span className="wiki-page-meta-text">
           <Clock size={11} />
           {page.updated_at
-            ? `Edited ${formatDistanceToNow(new Date(page.updated_at), {
-                addSuffix: true,
-              })}`
+            ? `Edited ${formatDistanceToNow(new Date(page.updated_at), { addSuffix: true })}`
             : 'Just created'}
         </span>
 
-        {/* Save status */}
         {showSaving && (
           <span className="wiki-page-save-indicator">Saving…</span>
         )}
@@ -273,7 +271,6 @@ export default function PageEditorPage() {
           </span>
         )}
 
-        {/* Manual save button — highlighted when dirty */}
         <button
           type="button"
           className={`wiki-save-btn${isDirty ? ' wiki-save-btn--dirty' : ''}`}
@@ -289,14 +286,16 @@ export default function PageEditorPage() {
       {/* ── Divider ───────────────────────────────────── */}
       <div className="wiki-page-divider" />
 
-      {/* ── Tiptap editor ─────────────────────────────── */}
+      {/* ── Tiptap editor (lazy loaded) ───────────────── */}
       <div className="wiki-page-editor-area" id="wiki-editor-mount">
-        <WikiEditor
-          ref={editorRef}
-          pageId={pageId ?? ''}
-          initialContent={page.content_json ?? null}
-          onChange={handleEditorChange}
-        />
+        <Suspense fallback={<EditorSkeleton />}>
+          <WikiEditor
+            ref={editorRef}
+            pageId={pageId ?? ''}
+            initialContent={page.content_json ?? null}
+            onChange={handleEditorChange}
+          />
+        </Suspense>
       </div>
     </div>
   )
