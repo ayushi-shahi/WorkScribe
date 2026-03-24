@@ -225,12 +225,6 @@ Frontend available at `http://localhost:5173`
 
 ---
 
-## API Reference
-
-Interactive API documentation is available at:
-
-**[workscribe-api.onrender.com/docs](https://workscribe-api.onrender.com/docs)**
-
 Built with FastAPI — all endpoints are fully documented with request/response schemas, authentication requirements, and live testing support.
 
 ---
