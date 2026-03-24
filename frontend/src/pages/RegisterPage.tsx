@@ -87,7 +87,7 @@ export default function RegisterPage() {
       <div className="auth-card">
         {/* Logo */}
         <div className="auth-logo">
-          <div className="auth-logo-mark">W</div>
+          <div className="auth-logo-mark"><img src="/favicon-32x32.png" alt="WorkScribe" style={{ width: 32, height: 32, borderRadius: 6, objectFit: "cover" }} /></div>
           <span className="auth-logo-name">WorkScribe</span>
         </div>
 
