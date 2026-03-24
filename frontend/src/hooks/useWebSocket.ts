@@ -68,6 +68,7 @@ export function useWebSocket(enabled: boolean = true): void {
 
         if (msg.type === 'notification') {
           const notification = msg.data
+          if (!notification) return
 
           // Prepend to notifications cache + bump unread_count
           queryClient.setQueryData<NotificationListResponse>(
@@ -76,7 +77,7 @@ export function useWebSocket(enabled: boolean = true): void {
               if (!old) return old
               return {
                 ...old,
-                data: [notification, ...old.data],
+                data: [notification, ...old.data].filter(Boolean),
                 total: old.total + 1,
                 unread_count: old.unread_count + 1,
               }

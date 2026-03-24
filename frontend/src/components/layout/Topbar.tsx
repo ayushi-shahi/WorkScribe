@@ -17,8 +17,9 @@ interface TopbarProps {
 export default function Topbar({ org }: TopbarProps) {
   const navigate   = useNavigate()
   const { slug }   = useParams<{ slug: string }>()
-  const user       = useAuthStore((s) => s.user)
-  const clearAuth  = useAuthStore((s) => s.clearAuth)
+  const user            = useAuthStore((s) => s.user)
+  const clearAuth       = useAuthStore((s) => s.clearAuth)
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
   const openCommandPalette       = useUIStore((s) => s.openCommandPalette)
   const toggleNotificationsPanel = useUIStore((s) => s.toggleNotificationsPanel)
   const isNotifOpen              = useUIStore((s) => s.isNotificationsPanelOpen)
@@ -28,10 +29,10 @@ export default function Topbar({ org }: TopbarProps) {
   const avatarMenuRef   = useRef<HTMLDivElement>(null)
   const orgSwitcherRef  = useRef<HTMLDivElement>(null)
 
-  // Fetch all orgs the user belongs to (for org switcher)
   const { data: orgs = [] } = useQuery({
     queryKey: ['orgs'],
     queryFn: getOrgsApi,
+    enabled: !!isAuthenticated,
     staleTime: 60_000,
   })
 

@@ -55,10 +55,12 @@ export default function Sidebar({ org }: SidebarProps) {
     staleTime: 60_000,
   })
 
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
+
   const { data: rawMembers } = useQuery({
     queryKey: ['members', slug],
     queryFn: () => getOrgMembersApi(slug ?? ''),
-    enabled: !!slug,
+    enabled: !!slug && !!isAuthenticated,
     staleTime: 60_000,
   })
 

@@ -35,8 +35,10 @@ export default function LoginPage() {
       }
       try {
         const orgsRes = await apiClient.get('/auth/orgs')
-        const slug = orgsRes.data?.[0]?.slug
-        navigate(slug ? `/org/${slug}/dashboard` : '/create-org', { replace: true })
+        const orgs: { slug: string }[] = orgsRes.data ?? []
+        const lastSlug = localStorage.getItem('last_org_slug')
+        const target = orgs.find((o) => o.slug === lastSlug) ?? orgs[0]
+        navigate(target ? `/org/${target.slug}/dashboard` : '/create-org', { replace: true })
       } catch {
         navigate('/create-org', { replace: true })
       }
@@ -52,8 +54,10 @@ export default function LoginPage() {
       setAuth(res.data.access_token, res.data.user)
       sessionStorage.setItem('refresh_token', res.data.refresh_token)
       const orgsRes = await apiClient.get('/auth/orgs')
-      const slug = orgsRes.data?.[0]?.slug
-      navigate(slug ? `/org/${slug}/dashboard` : '/create-org', { replace: true })
+      const orgs: { slug: string }[] = orgsRes.data ?? []
+      const lastSlug = localStorage.getItem('last_org_slug')
+      const target = orgs.find((o) => o.slug === lastSlug) ?? orgs[0]
+      navigate(target ? `/org/${target.slug}/dashboard` : '/create-org', { replace: true })
     } catch {
       // stay on login page
     }

@@ -24,6 +24,11 @@ export default function OrgLayout() {
 
   useWebSocket(isAuthenticated)
 
+  // Save last visited org so login redirect restores it
+  useEffect(() => {
+    if (slug) localStorage.setItem('last_org_slug', slug)
+  }, [slug])
+
   useEffect(() => {
     const handler = () => setShowCreateProject(true)
     window.addEventListener('sidebar:new-project', handler)
