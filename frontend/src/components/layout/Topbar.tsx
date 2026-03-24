@@ -93,7 +93,7 @@ export default function Topbar({ org }: TopbarProps) {
 
   return (
     <header className="topbar">
-      {/* ── Left: logo + org switcher ────────────────────── */}
+      {/* ── Left: logo + org switcher ────────────────────────── */}
       <div className="topbar-left">
         <div
           className="logo-mark"
@@ -103,7 +103,11 @@ export default function Topbar({ org }: TopbarProps) {
           onKeyDown={(e) => e.key === 'Enter' && navigate(`/org/${slug}/dashboard`)}
           aria-label="Go to dashboard"
         >
-          W
+          <img
+            src="/favicon-32x32.png"
+            alt="WorkScribe"
+            style={{ width: 28, height: 28, borderRadius: 6, objectFit: 'cover' }}
+          />
         </div>
 
         <div ref={orgSwitcherRef} style={{ position: 'relative' }}>
@@ -157,7 +161,7 @@ export default function Topbar({ org }: TopbarProps) {
         </div>
       </div>
 
-      {/* ── Center: search ───────────────────────────────── */}
+      {/* ── Center: search ───────────────────────────────────── */}
       <div className="topbar-center">
         <button
           className="topbar-search"
@@ -170,7 +174,7 @@ export default function Topbar({ org }: TopbarProps) {
         </button>
       </div>
 
-      {/* ── Right: notif bell + avatar ───────────────────── */}
+      {/* ── Right: notif bell + avatar ───────────────────────── */}
       <div className="topbar-right">
 
         {/* Notification bell */}
