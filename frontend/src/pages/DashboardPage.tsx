@@ -16,6 +16,7 @@ import {
   getOrgActivityApi,
   type OrgActivityEntry,
 } from '@/api/endpoints/dashboard'
+import { getProjectsApi } from '@/api/endpoints/projects'
 import { useAuthStore } from '@/stores/authStore'
 import { getInitials } from '@/lib/taskHelpers'
 import '@/styles/dashboard.css'
@@ -80,6 +81,21 @@ export default function DashboardPage() {
     enabled: !!slug,
     staleTime: 30_000,
   })
+
+  const { data: projects = [] } = useQuery({
+    queryKey: ['projects', slug],
+    queryFn: () => getProjectsApi(slug ?? ''),
+    enabled: !!slug,
+    staleTime: 60_000,
+  })
+
+  // Resolve the best project key to use for board/backlog links:
+  // 1. Use the active sprint's project key if available
+  // 2. Fall back to the first project in the org
+  const firstProjectKey =
+    stats?.active_sprints?.[0]?.project_key ??
+    projects[0]?.key ??
+    'APP'
 
   const activities: OrgActivityEntry[] = (activityData as any)?.data ?? activityData ?? []
 
@@ -146,7 +162,7 @@ export default function DashboardPage() {
                 No active sprints
                 <button
                   className="dash-empty-action"
-                  onClick={() => navigate(`/org/${slug}/projects/APP/backlog`)}
+                  onClick={() => navigate(`/org/${slug}/projects/${firstProjectKey}/backlog`)}
                 >
                   Go to Backlog
                 </button>
@@ -189,7 +205,7 @@ export default function DashboardPage() {
             <div className="dash-actions">
               <button
                 className="dash-action-btn"
-                onClick={() => navigate(`/org/${slug}/projects/APP/board`)}
+                onClick={() => navigate(`/org/${slug}/projects/${firstProjectKey}/board`)}
               >
                 <CheckSquare size={14} />
                 View Board
@@ -197,7 +213,7 @@ export default function DashboardPage() {
               </button>
               <button
                 className="dash-action-btn"
-                onClick={() => navigate(`/org/${slug}/projects/APP/backlog`)}
+                onClick={() => navigate(`/org/${slug}/projects/${firstProjectKey}/backlog`)}
               >
                 <LayoutList size={14} />
                 Go to Backlog
@@ -267,8 +283,8 @@ export default function DashboardPage() {
                 No activity yet
               </div>
             ) : (
-              <div className="dash-activity-list">
-                {activities.slice(0, 20).map((entry) => (
+              <div className="dash-activity-list" style={{ maxHeight: 320, overflowY: 'auto' }}>
+                {activities.map((entry) => (
                   <div key={entry.id} className="dash-activity-item">
                     <div className="avatar avatar-sm dash-activity-avatar">
                       {getInitials(entry.actor.display_name)}

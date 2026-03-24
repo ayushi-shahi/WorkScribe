@@ -126,7 +126,7 @@ export default function NotificationsPanel() {
     close()
   }
 
-  const notifications = data?.data ?? []
+  const notifications = (data?.data ?? []).filter(Boolean)
   const unreadCount   = data?.unread_count ?? 0
 
   if (!isOpen) return null
