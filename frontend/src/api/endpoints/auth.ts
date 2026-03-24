@@ -84,3 +84,8 @@ export async function acceptInviteApi(
   )
   return res.data
 }
+
+export async function getOrgsApi(): Promise<Array<{ slug: string; name: string }>> {
+  const res = await apiClient.get('/auth/orgs')
+  return res.data
+}

@@ -812,7 +812,7 @@ export default function TaskPanel() {
       <div className="task-panel" role="dialog" aria-modal="true">
         {/* Topbar */}
         <div className="task-panel-topbar">
-          <span className="task-panel-id">{task?.task_id ?? taskIdParam}</span>
+          <span className="task-panel-id">{task?.task_id ?? (isLoading ? '…' : taskIdParam)}</span>
           <div className="task-panel-spacer" />
           <button className="task-panel-icon-btn" title="Open full page" onClick={() => alert('Full page view — coming soon')}>
             <ExternalLink size={14} />
