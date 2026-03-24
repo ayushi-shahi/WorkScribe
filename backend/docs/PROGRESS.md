@@ -1,7 +1,7 @@
 # WorkScribe — Progress Doc
 
-**Last Updated:** 2026-03-24
-**Latest Commit:** `perf: route-level code splitting, lazy WikiEditor, memo TaskRow, tune cache times`
+**Last Updated:** 2026-03-25
+**Latest Commit:** `chore: untrack .git_backup and seeds, add to gitignore`
 **Alembic Head:** `d4e5f6a1b2c3` (create_notifications_table)
 **API (prod):** `https://workscribe-api.onrender.com`
 **Frontend (prod):** `https://work-scribe.vercel.app`
@@ -10,34 +10,104 @@
 
 ## Overall Status
 
-| Phase | Feature                     | Status               |
-| ----- | --------------------------- | -------------------- |
-| 1     | Foundation & Infrastructure | ✅ Complete          |
-| 2.1   | Auth                        | ✅ Complete & Tested |
-| 2.2   | Organizations & Members     | ✅ Complete & Tested |
-| 2.3   | Projects + Tasks            | ✅ Complete & Tested |
-| 2.4   | Sprints                     | ✅ Complete & Tested |
-| 5     | Wiki / Pages                | ✅ Complete & Tested |
-| 5.2   | Performance (Redis Caching) | ✅ Complete & Tested |
-| 6.1   | Task ↔ Doc Linking         | ✅ Complete & Tested |
-| 6.2   | Notifications DB + REST API | ✅ Complete & Tested |
-| 6.3   | Celery → BackgroundTasks   | ✅ Complete & Tested |
-| 6.5   | Search                      | ✅ Complete & Tested |
-| 7.1   | Dashboard                   | ✅ Complete & Tested |
-| 7.2   | Security Audit              | ✅ Complete & Tested |
-| 8.1   | Google OAuth                | ✅ Complete & Tested |
-| —    | API Hardening — Gaps 1–5  | ✅ Complete & Tested |
-| —    | Labels API + UI             | ✅ Complete & Tested |
-| J1    | My Work page + RBAC audit   | ✅ Complete & Tested |
-| J2    | Empty states                | ✅ Complete & Tested |
-| J3    | Error boundaries            | ✅ Complete & Tested |
-| J4    | Loading skeletons audit     | ✅ Complete & Tested |
-| J5    | Production build + deploy   | ✅ Complete          |
-| J6    | Performance optimization    | ✅ Complete          |
+| Phase | Feature                      | Status               |
+| ----- | ---------------------------- | -------------------- |
+| 1     | Foundation & Infrastructure  | ✅ Complete          |
+| 2.1   | Auth                         | ✅ Complete & Tested |
+| 2.2   | Organizations & Members      | ✅ Complete & Tested |
+| 2.3   | Projects + Tasks             | ✅ Complete & Tested |
+| 2.4   | Sprints                      | ✅ Complete & Tested |
+| 5     | Wiki / Pages                 | ✅ Complete & Tested |
+| 5.2   | Performance (Redis Caching)  | ✅ Complete & Tested |
+| 6.1   | Task ↔ Doc Linking          | ✅ Complete & Tested |
+| 6.2   | Notifications DB + REST API  | ✅ Complete & Tested |
+| 6.3   | Celery → BackgroundTasks    | ✅ Complete & Tested |
+| 6.5   | Search                       | ✅ Complete & Tested |
+| 7.1   | Dashboard                    | ✅ Complete & Tested |
+| 7.2   | Security Audit               | ✅ Complete & Tested |
+| 8.1   | Google OAuth                 | ✅ Complete & Tested |
+| —    | API Hardening — Gaps 1–5   | ✅ Complete & Tested |
+| —    | Labels API + UI              | ✅ Complete & Tested |
+| J1    | My Work page + RBAC audit    | ✅ Complete & Tested |
+| J2    | Empty states                 | ✅ Complete & Tested |
+| J3    | Error boundaries             | ✅ Complete & Tested |
+| J4    | Loading skeletons audit      | ✅ Complete & Tested |
+| J5    | Production build + deploy    | ✅ Complete          |
+| J6    | Performance optimization     | ✅ Complete          |
+| —    | Demo data seeding            | ✅ Complete          |
+| —    | Repo cleanup (seeds, backup) | ✅ Complete          |
 
 **Backend: 100% complete.**
 **Frontend: 100% complete. Fully deployed and live.**
 **Email: Brevo reactivated and working ✅**
+
+---
+
+## Production Demo Credentials
+
+### Primary Demo Account (use this for demos)
+
+| Field    | Value               |
+| -------- | ------------------- |
+| Email    | demo@workscribe.app |
+| Password | Demo@12345          |
+| Role     | Admin on all 3 orgs |
+| Name     | Alex Rivera         |
+
+This account has admin access across all 3 seeded orgs. Use the org switcher in the topbar to switch between them.
+
+### All Seeded Orgs
+
+| Org      | Slug     | Industry   | Projects                                         |
+| -------- | -------- | ---------- | ------------------------------------------------ |
+| ShopFlow | shopflow | E-commerce | Storefront, Cart & Checkout, Inventory           |
+| MedSync  | medsync  | Healthcare | Patient Portal, Clinical Dashboard, Integrations |
+| FinVeda  | finveda  | Fintech    | Payments, Lending, Compliance & Risk             |
+
+Each org has: 3 projects · completed/active/planned sprints · 20+ tasks with subtasks · comments · wiki spaces + pages · linked docs.
+
+### Per-Org Owner Accounts
+
+| Org      | Email                    | Password     | Role  |
+| -------- | ------------------------ | ------------ | ----- |
+| ShopFlow | demo@workscribe.app      | Demo@12345   | Owner |
+| MedSync  | arjun.sharma@medsync.app | MedSync@2026 | Owner |
+| FinVeda  | kavya.reddy@finveda.app  | FinVeda@2026 | Owner |
+
+### Personal Account
+
+| Email                       | Password     | Role                |
+| --------------------------- | ------------ | ------------------- |
+| ayushishahi825018@gmail.com | 825018Shahi@ | Admin on all 3 orgs |
+
+### RBAC Notes
+
+* API only allows inviting as `admin` or `member` — pattern `^(admin|member)$` — owner cannot be assigned via invite endpoint
+* `demo@workscribe.app` is Owner of ShopFlow (original seed), Admin on MedSync + FinVeda
+* All accounts have tasks assigned across all their orgs' projects
+
+---
+
+## Seeds Folder
+
+All seed and patch scripts are in `/seeds/` (gitignored — local only).
+
+| File                       | Purpose                                           |
+| -------------------------- | ------------------------------------------------- |
+| `seed_shopflow_v2.py`    | Seeds ShopFlow org with e-commerce data           |
+| `seed_medsync.py`        | Seeds MedSync org with healthcare data            |
+| `seed_finveda.py`        | Seeds FinVeda org with fintech data               |
+| `patch_medsync_owner.py` | Assigns tasks to Arjun (MedSync owner)            |
+| `patch_demo_owner.py`    | Adds demo account to MedSync + FinVeda            |
+| `patch_demo_tasks.py`    | Assigns tasks to demo account across orgs         |
+| `fix_demo_membership.py` | Fixed version — invite + accept + task assign    |
+| `debug_projects.py`      | Diagnostic — checks project access per org       |
+| `rename_demo_user.py`    | Attempted display_name patch (405 — no endpoint) |
+| `add_ayushi.py`          | Registers ayushishahi825018 + joins all 3 orgs    |
+| `seed_demo.py`           | Accidentally committed, removed from history      |
+
+To re-seed from scratch, run in order:
+`seed_shopflow_v2.py` → `seed_medsync.py` → `seed_finveda.py` → `fix_demo_membership.py` → `add_ayushi.py`
 
 ---
 
@@ -132,6 +202,7 @@
 * Existing users: just accepts, no extra fields needed
 * Email delivery: Brevo HTTP API via `httpx.post` to `https://api.brevo.com/v3/smtp/email`
 * Sender: `workscribe.noreply@gmail.com` (verified in Brevo)
+* Invite role: API only accepts `admin` or `member` — pattern `^(admin|member)$` — owner cannot be invited directly
 
 ---
 
@@ -644,6 +715,16 @@ Default `limit=50`, max `limit=100`, enforced via `Query(ge=1, le=100)`.
 
 ---
 
+## Repo Cleanup ✅ (2026-03-25)
+
+* `seed_demo.py` accidentally committed in `65facc0` — removed via `git rm --cached` + `git commit --amend` + force push
+* All seed/patch/debug scripts moved to `/seeds/` folder (local only)
+* `/seeds/` and `/.git_backup/` added to `.gitignore`
+* Both untracked from git history via `git rm -r --cached`
+* Committed as: `chore: untrack .git_backup and seeds, add to gitignore`
+
+---
+
 ## Database Migration Chain
 
 ```
@@ -703,6 +784,7 @@ Default `limit=50`, max `limit=100`, enforced via `Query(ge=1, le=100)`.
 * `WikiEditor` lazy loaded inside `PageEditorPage` — shell renders before editor bundle arrives
 * `React.memo` on `TaskRow` in `MyWorkPage` — prevents re-render on filter state changes
 * Archived project queries use long staleTime/gcTime (300s/600s) — they never change
+* Invite role pattern: `^(admin|member)$` — owner cannot be assigned via invite endpoint
 
 ---
 
@@ -744,7 +826,7 @@ Default `limit=50`, max `limit=100`, enforced via `Query(ge=1, le=100)`.
 
 # Frontend Progress
 
-Last Updated: 2026-03-24
+Last Updated: 2026-03-25
 Backend: 100% complete
 Frontend: 100% complete
 Frontend location: /frontend
@@ -1123,6 +1205,7 @@ vercel.json                       ✅ repo root — SPA rewrite for Vercel
 * displayTaskId in TaskPanel: task?.task_id ?? (task?.number && key ? `${key}-${task.number}` : (isLoading ? '…' : taskIdParam))
 * useResolveTaskId: UUID check runs first — notification navigations skip cache lookup entirely
 * Dashboard firstProjectKey: active sprint project_key → projects[0]?.key → 'APP' fallback
+* Invite role: API pattern `^(admin|member)$` — owner cannot be assigned via invite, must be set directly in DB
 
 ---
 
