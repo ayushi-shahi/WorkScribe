@@ -139,12 +139,6 @@
   cursor: not-allowed;
 }
 
-.auth-divider {
-  height: 1px;
-  background: var(--border);
-  margin: var(--space-2) 0;
-}
-
 .auth-footer {
   text-align: center;
   font-size: 12px;
