@@ -570,7 +570,7 @@ function SubtasksSection({ parentTaskId, slug, projectId, statuses }: SubtasksSe
 // ── TaskPanel ─────────────────────────────────────────────────────────────────
 
 export default function TaskPanel() {
-  const { slug } = useParams<{ slug: string }>()
+  const { slug, key } = useParams<{ slug: string; key: string }>()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const queryClient = useQueryClient()
@@ -594,6 +594,11 @@ export default function TaskPanel() {
     enabled: !!resolvedId,
     staleTime: 30_000,
   })
+
+  // Derive the human-readable task ID to show in the topbar.
+  // Prefer task.task_id from API, fall back to key+number, then show … while loading.
+  const displayTaskId = task?.task_id
+    ?? (task?.number && key ? `${key}-${task.number}` : (isLoading ? '…' : taskIdParam))
 
   const { data: statuses = [] } = useQuery({
     queryKey: ['statuses', slug, task?.project_id],
@@ -812,9 +817,13 @@ export default function TaskPanel() {
       <div className="task-panel" role="dialog" aria-modal="true">
         {/* Topbar */}
         <div className="task-panel-topbar">
-          <span className="task-panel-id">{task?.task_id ?? (isLoading ? '…' : taskIdParam)}</span>
+          <span className="task-panel-id">{displayTaskId}</span>
           <div className="task-panel-spacer" />
-          <button className="task-panel-icon-btn" title="Open full page" onClick={() => alert('Full page view — coming soon')}>
+          <button
+            className="task-panel-icon-btn"
+            title="Open in new tab"
+            onClick={() => window.open(window.location.href, '_blank')}
+          >
             <ExternalLink size={14} />
           </button>
           <button className="task-panel-icon-btn" title="Close" onClick={close}>
@@ -1124,7 +1133,6 @@ function ActivitySection({
     staleTime: 60_000,
   })
 
-  // ── Resolve sprint names from cache (populated by BacklogPage) ────────────
   const sprintQueries = queryClient.getQueriesData<{ sprints: SprintSummary[] }>({
     queryKey: ['sprints'],
   })
@@ -1225,7 +1233,6 @@ function formatActivity(
     const newVal = resolve(newRaw)
     const oldVal = oldRaw !== undefined ? resolve(oldRaw) : null
 
-    // Special case: moved to backlog
     if (field === 'sprint_id' && newVal === 'backlog') {
       return `moved task to backlog`
     }
@@ -1251,6 +1258,11 @@ function useResolveTaskId(taskIdParam: string | null, slug: string | undefined):
   return useMemo(() => {
     if (!taskIdParam) return null
 
+    // If it's already a UUID, return it directly — task will load via getTaskApi
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    if (uuidRe.test(taskIdParam)) return taskIdParam
+
+    // Try to find by task_id in board cache
     const boardQueries = queryClient.getQueriesData<{ tasks: Task[] }>({ queryKey: ['board', slug] })
     for (const [, data] of boardQueries) {
       if (!data?.tasks) continue
@@ -1258,6 +1270,7 @@ function useResolveTaskId(taskIdParam: string | null, slug: string | undefined):
       if (found) return found.id
     }
 
+    // Try by number in board cache
     const numMatch = taskIdParam.match(/-(\d+)$/)
     if (numMatch) {
       const num = parseInt(numMatch[1], 10)
@@ -1268,15 +1281,13 @@ function useResolveTaskId(taskIdParam: string | null, slug: string | undefined):
       }
     }
 
+    // Try backlog cache
     const backlogQueries = queryClient.getQueriesData<{ tasks: Task[] }>({ queryKey: ['backlog-tasks', slug] })
     for (const [, data] of backlogQueries) {
       if (!data?.tasks) continue
       const found = data.tasks.find((t) => t.task_id === taskIdParam || t.number === Number(numMatch?.[1]))
       if (found) return found.id
     }
-
-    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
-    if (uuidRe.test(taskIdParam)) return taskIdParam
 
     return null
   }, [taskIdParam, slug])
