@@ -1,4 +1,3 @@
-<div align="center">
 # WorkScribe
 
 ### Project Management & Team Wiki, Unified
@@ -7,26 +6,22 @@ WorkScribe is a full-stack project management platform that brings task tracking
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-work--scribe.vercel.app-5E6AD2?style=for-the-badge)](https://work-scribe.vercel.app/)
 [![Backend](https://img.shields.io/badge/API-workscribe--api.onrender.com-10B981?style=for-the-badge)](https://workscribe-api.onrender.com/)
-[![License](https://img.shields.io/badge/License-MIT-gray?style=for-the-badge)](https://claude.ai/chat/6cb55523-d307-4426-b228-d1b1417092c6#license)
-
-</div>
----
 
 
 ---
 
 ## Table of Contents
 
-* [Overview](https://claude.ai/chat/6cb55523-d307-4426-b228-d1b1417092c6#overview)
-* [Features](https://claude.ai/chat/6cb55523-d307-4426-b228-d1b1417092c6#features)
-* [Tech Stack](https://claude.ai/chat/6cb55523-d307-4426-b228-d1b1417092c6#tech-stack)
-* [Architecture](https://claude.ai/chat/6cb55523-d307-4426-b228-d1b1417092c6#architecture)
-* [Getting Started](https://claude.ai/chat/6cb55523-d307-4426-b228-d1b1417092c6#getting-started)
-* [Environment Variables](https://claude.ai/chat/6cb55523-d307-4426-b228-d1b1417092c6#environment-variables)
-* [API Reference](https://claude.ai/chat/6cb55523-d307-4426-b228-d1b1417092c6#api-reference)
-* [Project Structure](https://claude.ai/chat/6cb55523-d307-4426-b228-d1b1417092c6#project-structure)
-* [Key Design Decisions](https://claude.ai/chat/6cb55523-d307-4426-b228-d1b1417092c6#key-design-decisions)
-* [License](https://claude.ai/chat/6cb55523-d307-4426-b228-d1b1417092c6#license)
+* Overview
+* Features
+* Tech Stack
+* Architecture
+* Getting Started
+* Environment Variables
+* API Reference
+* Project Structure
+* Key Design Decisions
+* License
 
 ---
 
