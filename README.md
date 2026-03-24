@@ -7,13 +7,13 @@ WorkScribe is a full-stack project management platform that brings task tracking
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-work--scribe.vercel.app-5E6AD2?style=for-the-badge)](https://work-scribe.vercel.app/)
 [![Backend](https://img.shields.io/badge/API-workscribe--api.onrender.com-10B981?style=for-the-badge)](https://workscribe-api.onrender.com/)
 
-
 ---
 
 ## Table of Contents
 
 * Overview
 * Features
+* Try It Out
 * Tech Stack
 * Architecture
 * Getting Started
@@ -90,6 +90,31 @@ It supports multi-tenant organizations, role-based access control, real-time Web
 * Cross-tenant isolation — all queries scoped by org_id
 * CORS — no wildcards, production origins via env var
 * SQL injection audit — zero raw string interpolation
+
+---
+
+## Try It Out
+
+A fully seeded demo environment is available at  **[work-scribe.vercel.app](https://work-scribe.vercel.app/)** .
+
+**Demo login:**
+
+| Field    | Value               |
+| -------- | ------------------- |
+| Email    | demo@workscribe.app |
+| Password | Demo@12345          |
+
+The demo account has admin access across  **3 pre-seeded organizations** , each with realistic data:
+
+| Organization | Industry   | Projects | What's inside                                               |
+| ------------ | ---------- | -------- | ----------------------------------------------------------- |
+| ShopFlow     | E-commerce | 3        | Cart, checkout, inventory — tasks, sprints, wiki, comments |
+| MedSync      | Healthcare | 3        | Patient portal, clinical dashboard, FHIR integrations       |
+| FinVeda      | Fintech    | 3        | UPI payments, lending, compliance & risk                    |
+
+Each org includes completed/active/planned sprints, 20+ tasks with subtasks and comments, wiki spaces with pages, and linked docs.
+
+> **Note:** This is shared demo data. Please don't delete orgs, projects, or wiki spaces.
 
 ---
 
