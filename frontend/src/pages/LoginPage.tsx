@@ -87,7 +87,7 @@ export default function LoginPage() {
         <div className="auth-card">
           {/* Logo */}
           <div className="auth-logo">
-            <div className="auth-logo-mark">W</div>
+            <img src="/favicon-32x32.png" className="auth-logo-mark" alt="WorkScribe logo" />
             <span className="auth-logo-name">WorkScribe</span>
           </div>
 
