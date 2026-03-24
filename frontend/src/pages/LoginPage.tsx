@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
-import { GoogleLogin } from '@react-oauth/google'
+import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google'
 import { useAuthStore } from '@/stores/authStore'
 import { loginApi } from '@/api/endpoints/auth'
 import type { ApiError } from '@/types'
@@ -82,89 +82,91 @@ export default function LoginPage() {
       : null
 
   return (
-    <div className="auth-root">
-      <div className="auth-card">
-        {/* Logo */}
-        <div className="auth-logo">
-          <div className="auth-logo-mark">W</div>
-          <span className="auth-logo-name">WorkScribe</span>
-        </div>
-
-        {/* Heading */}
-        <h1 className="auth-heading">Welcome back</h1>
-        <p className="auth-subheading">Sign in to your workspace</p>
-
-        {/* API error banner */}
-        {apiErrorMessage && (
-          <div className="auth-error-banner" style={{ marginBottom: 16 }}>
-            {apiErrorMessage}
-          </div>
-        )}
-
-        {/* Form */}
-        <form className="auth-form" onSubmit={handleSubmit} noValidate>
-          <div className="auth-field">
-            <label className="auth-label" htmlFor="email">Email</label>
-            <input
-              id="email"
-              type="email"
-              className={`auth-input${fieldErrors.email ? ' error' : ''}`}
-              placeholder="you@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              disabled={isPending}
-              autoComplete="email"
-              autoFocus
-            />
-            {fieldErrors.email && <span className="auth-field-error">{fieldErrors.email}</span>}
+    <GoogleOAuthProvider clientId="57561569997-tnkvn4vabsvrjul271l15r2is6dhp6m9.apps.googleusercontent.com">
+      <div className="auth-root">
+        <div className="auth-card">
+          {/* Logo */}
+          <div className="auth-logo">
+            <div className="auth-logo-mark">W</div>
+            <span className="auth-logo-name">WorkScribe</span>
           </div>
 
-          <div className="auth-field">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <label className="auth-label" htmlFor="password">Password</label>
-              <Link to="/forgot-password" className="auth-forgot">Forgot password?</Link>
+          {/* Heading */}
+          <h1 className="auth-heading">Welcome back</h1>
+          <p className="auth-subheading">Sign in to your workspace</p>
+
+          {/* API error banner */}
+          {apiErrorMessage && (
+            <div className="auth-error-banner" style={{ marginBottom: 16 }}>
+              {apiErrorMessage}
             </div>
-            <input
-              id="password"
-              type="password"
-              className={`auth-input${fieldErrors.password ? ' error' : ''}`}
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={isPending}
-              autoComplete="current-password"
-            />
-            {fieldErrors.password && <span className="auth-field-error">{fieldErrors.password}</span>}
+          )}
+
+          {/* Form */}
+          <form className="auth-form" onSubmit={handleSubmit} noValidate>
+            <div className="auth-field">
+              <label className="auth-label" htmlFor="email">Email</label>
+              <input
+                id="email"
+                type="email"
+                className={`auth-input${fieldErrors.email ? ' error' : ''}`}
+                placeholder="you@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                disabled={isPending}
+                autoComplete="email"
+                autoFocus
+              />
+              {fieldErrors.email && <span className="auth-field-error">{fieldErrors.email}</span>}
+            </div>
+
+            <div className="auth-field">
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <label className="auth-label" htmlFor="password">Password</label>
+                <Link to="/forgot-password" className="auth-forgot">Forgot password?</Link>
+              </div>
+              <input
+                id="password"
+                type="password"
+                className={`auth-input${fieldErrors.password ? ' error' : ''}`}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={isPending}
+                autoComplete="current-password"
+              />
+              {fieldErrors.password && <span className="auth-field-error">{fieldErrors.password}</span>}
+            </div>
+
+            <button type="submit" className="auth-btn" disabled={isPending}>
+              {isPending ? 'Signing in…' : 'Sign in'}
+            </button>
+          </form>
+
+          {/* Divider */}
+          <div className="auth-divider">
+            <span>or</span>
           </div>
 
-          <button type="submit" className="auth-btn" disabled={isPending}>
-            {isPending ? 'Signing in…' : 'Sign in'}
-          </button>
-        </form>
+          {/* Google OAuth */}
+          <div className="auth-google-wrapper">
+            <GoogleLogin
+              onSuccess={handleGoogleSuccess}
+              onError={() => console.error('Google login failed')}
+              theme="filled_black"
+              shape="rectangular"
+              text="continue_with"
+              width="360"
+            />
+          </div>
 
-        {/* Divider */}
-        <div className="auth-divider">
-          <span>or</span>
-        </div>
-
-        {/* Google OAuth */}
-        <div className="auth-google-wrapper">
-          <GoogleLogin
-            onSuccess={handleGoogleSuccess}
-            onError={() => console.error('Google login failed')}
-            theme="filled_black"
-            shape="rectangular"
-            text="continue_with"
-            width="360"
-          />
-        </div>
-
-        {/* Footer */}
-        <div className="auth-footer">
-          Don't have an account?{' '}
-          <Link to="/register">Create one</Link>
+          {/* Footer */}
+          <div className="auth-footer">
+            Don't have an account?{' '}
+            <Link to="/register">Create one</Link>
+          </div>
         </div>
       </div>
-    </div>
+    </GoogleOAuthProvider>
   )
 }
