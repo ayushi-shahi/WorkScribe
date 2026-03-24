@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams } from 'react-router-dom'
 import { X } from 'lucide-react'
@@ -37,7 +38,7 @@ export default function CreateProjectModal({ onClose }: Props) {
     },
   })
 
-  return (
+  return createPortal(
     <div
       className="ctm-overlay"
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}
@@ -130,6 +131,7 @@ export default function CreateProjectModal({ onClose }: Props) {
         </div>
 
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
