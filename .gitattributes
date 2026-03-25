@@ -33,3 +33,6 @@ backend/alembic/versions/*.py text eol=lf
 # IDE / Editor files
 .vscode/** text eol=lf
 .idea/** text eol=lf
+
+*.ts linguist-detectable=false
+*.tsx linguist-detectable=false
