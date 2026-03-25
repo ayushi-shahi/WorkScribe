@@ -41,6 +41,257 @@
 **Frontend: 100% complete. Fully deployed and live.**
 **Email: Brevo reactivated and working ✅**
 
+
+## Project File Structure
+
+Workscribe/
+├── package.json                         — root workspace package config
+├── package-lock.json                    — root lockfile
+├── README.md                            — project overview
+├── vercel.json                          — SPA rewrite rule for Vercel (repo root, catch-all → /index.html)
+│
+├── backend/
+│   ├── .dockerignore                    — files excluded from Docker build context
+│   ├── .env                             — local env vars (DATABASE_URL, REDIS_URL, JWT_SECRET, etc.)
+│   ├── .env.example                     — env var template for new contributors
+│   ├── alembic.ini                      — Alembic config (DB URL, migration script location)
+│   ├── docker-compose.yml               — local dev services: api + PostgreSQL + Redis
+│   ├── Dockerfile                       — multi-stage build, non-root appuser, uvicorn entrypoint
+│   ├── fix_pyproject.py                 — one-off script to fix pyproject.toml formatting issues
+│   ├── pyproject.toml                   — Python project metadata and tool config
+│   ├── requirements.txt                 — all backend Python dependencies
+│   │
+│   ├── alembic/
+│   │   ├── env.py                       — async Alembic env, loads models for autogenerate
+│   │   ├── script.py.mako               — migration file template
+│   │   └── versions/
+│   │       ├── 20260221_0704_..._create_organizations_table.py    — migration 001
+│   │       ├── 20260221_0707_..._create_users_table.py            — migration 002
+│   │       ├── 20260221_1257_..._create_org_members_table.py      — migration 003: OrgMember + OrgRole enum
+│   │       ├── 20260221_1715_..._create_invitations_table.py      — migration 004
+│   │       ├── 20260224_0902_..._create_projects_table.py         — migration 006
+│   │       ├── 20260224_1405_..._create_task_statuses_table.py    — migration 007
+│   │       ├── 20260224_2009_..._create_project_task_counters.py  — migration 009: auto-increment task IDs per project
+│   │       ├── 20260224_2017_..._create_tasks_table.py            — migration 010
+│   │       ├── 20260224_2025_..._create_labels_table.py           — migration 008: labels + task_labels junction
+│   │       ├── 20260224_2027_..._create_comments_table.py         — migration 012
+│   │       ├── 20260224_2028_..._create_activity_log_table.py     — migration 012b
+│   │       ├── 20260224_2038_..._seed_default_task_statuses.py    — migration 011: trigger to seed statuses on project create
+│   │       ├── 20260226_0432_..._create_sprints_table.py          — migration 013
+│   │       ├── 20260226_0435_..._add_sprint_id_to_tasks.py        — migration 014
+│   │       ├── 20260226_0600_..._create_wiki_spaces_table.py      — migration 015
+│   │       ├── 20260226_0610_..._create_pages_table.py            — migration 016
+│   │       ├── 20260226_1000_..._create_task_page_links_table.py  — migration 017
+│   │       └── 20260226_1100_..._create_notifications_table.py    — migration 018 ← HEAD
+│   │
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── main.py                      — FastAPI app factory, CORS, middleware, router registration, lifespan
+│   │   ├── core/
+│   │   │   ├── __init__.py
+│   │   │   ├── config.py                — pydantic-settings: all env vars with validation
+│   │   │   ├── database.py              — async SQLAlchemy engine, session factory, get_db() dependency
+│   │   │   ├── dependencies.py          — get_current_user, get_org_member, require_role FastAPI dependencies
+│   │   │   ├── rate_limit.py            — RateLimitMiddleware: 100 req/min per IP, Redis sliding window, 429 + Retry-After
+│   │   │   ├── security.py              — bcrypt password hashing, JWT encode/decode, JTI blacklist
+│   │   │   └── websocket.py             — ConnectionManager singleton for WebSocket broadcast
+│   │   ├── models/
+│   │   │   ├── __init__.py
+│   │   │   ├── activity_log.py          — ActivityLog ORM model
+│   │   │   ├── base.py                  — Base, TimestampMixin, UUIDMixin shared by all models
+│   │   │   ├── comment.py               — Comment ORM model
+│   │   │   ├── invitation.py            — Invitation ORM model (org invite tokens)
+│   │   │   ├── label.py                 — Label + TaskLabel junction ORM models
+│   │   │   ├── member.py                — OrgMember ORM model, OrgRole enum (owner/admin/member)
+│   │   │   ├── notification.py          — Notification ORM model, NotificationType enum
+│   │   │   ├── organization.py          — Organization ORM model
+│   │   │   ├── project.py               — Project ORM model, ProjectType enum
+│   │   │   ├── sprint.py                — Sprint ORM model, SprintStatus enum
+│   │   │   ├── task.py                  — Task ORM model, TaskPriority + TaskType enums
+│   │   │   ├── task_page_link.py        — TaskPageLink junction ORM model
+│   │   │   ├── task_status.py           — TaskStatus ORM model, StatusCategory enum
+│   │   │   ├── user.py                  — User ORM model (password_hash nullable for OAuth users)
+│   │   │   └── wiki.py                  — WikiSpace + Page ORM models
+│   │   ├── routers/
+│   │   │   ├── __init__.py
+│   │   │   ├── auth.py                  — register, login, refresh, logout, forgot/reset password, me, orgs, OAuth, invitations
+│   │   │   ├── dashboard.py             — org activity feed + dashboard summary stats
+│   │   │   ├── labels.py                — CRUD for project labels + assign/remove label on task
+│   │   │   ├── notifications.py         — list notifications, mark single/all read
+│   │   │   ├── organizations.py         — org CRUD, member management, invite flow
+│   │   │   ├── pages.py                 — wiki page CRUD, move, soft delete with child guard
+│   │   │   ├── projects.py              — project CRUD, status list
+│   │   │   ├── search.py                — cross-entity search (tasks + pages) within org
+│   │   │   ├── sprints.py               — sprint CRUD, start/complete, task assignment
+│   │   │   ├── task_page_links.py       — link/unlink pages to tasks, list in both directions
+│   │   │   ├── tasks.py                 — task CRUD, move, bulk positions, comments, activity, subtasks, my-tasks
+│   │   │   └── websocket.py             — WS /api/v1/ws?token={jwt} endpoint for real-time push
+│   │   ├── schemas/
+│   │   │   ├── __init__.py
+│   │   │   ├── auth.py                  — request/response schemas for all auth endpoints
+│   │   │   ├── dashboard.py             — DashboardStats + ActivityFeed response schemas
+│   │   │   ├── notification.py          — Notification read/list schemas
+│   │   │   ├── organization.py          — org + member request/response schemas
+│   │   │   ├── project.py               — project + StatusRead schemas
+│   │   │   ├── sprint.py                — sprint request/response schemas
+│   │   │   ├── task.py                  — task + comment + activity schemas
+│   │   │   ├── task_page_link.py        — link request/response schemas
+│   │   │   └── wiki.py                  — WikiSpace + Page request/response schemas
+│   │   ├── services/
+│   │   │   ├── __init__.py
+│   │   │   ├── auth_service.py          — register, login, token refresh, password reset, invitation accept logic
+│   │   │   ├── dashboard_service.py     — aggregates stats + activity feed queries
+│   │   │   ├── notification_service.py  — create, list, mark-read notification logic
+│   │   │   ├── oauth_service.py         — Google OAuth token verification + account linking strategy
+│   │   │   ├── organization_service.py  — org CRUD, member management, invite dispatch
+│   │   │   ├── project_service.py       — project CRUD, status seeding, soft archive
+│   │   │   ├── search_service.py        — full-text search across tasks + pages scoped by org
+│   │   │   ├── sprint_service.py        — sprint lifecycle: create, start, complete, task assignment
+│   │   │   ├── task_page_link_service.py — link/unlink tasks ↔ pages, bidirectional list
+│   │   │   ├── task_service.py          — task CRUD, move, bulk positions, comments, activity log, notification triggers
+│   │   │   └── wiki_service.py          — wiki space + page CRUD, tree, move, Redis cache invalidation
+│   │   └── workers/
+│   │       ├── __init__.py
+│   │       ├── email_tasks.py           — send_invitation_email + send_password_reset_email via Brevo HTTP API
+│   │       └── notification_tasks.py    — dispatch_notification async function, WebSocket push + DB write
+│   │
+│   ├── docs/
+│   │   ├── DESIGN.md                    — UI/UX design decisions and component guidelines
+│   │   ├── PRD.md                       — product requirements document
+│   │   ├── PROGRESS.md                  — this file: full build log and status tracker
+│   │   ├── TECH_RULES.md                — backend conventions, folder structure rules, coding standards
+│   │   └── todo.md                      — running list of pending tasks and ideas
+│   │
+│   └── tests/
+│       ├── __init__.py
+│       ├── conftest.py                  — pytest fixtures: test DB, async client, seed users/orgs
+│       └── test_isolation.py            — 30 cross-tenant isolation tests (all pass ✅)
+│
+├── frontend/
+│   ├── .env                             — VITE_API_URL for local dev
+│   ├── .prettierrc                      — Prettier formatting config
+│   ├── eslint.config.js                 — ESLint rules for TypeScript + React
+│   ├── index.html                       — Vite HTML entry point
+│   ├── package.json                     — frontend dependencies (React 19, Vite, dnd-kit, Tiptap, etc.)
+│   ├── package-lock.json                — frontend lockfile
+│   ├── README.md                        — frontend-specific notes
+│   ├── tsconfig.json                    — root TypeScript config
+│   ├── tsconfig.app.json                — app-specific TS config (src/)
+│   ├── tsconfig.node.json               — Node-specific TS config (vite.config.ts)
+│   ├── vercel.json                      — legacy Vercel config (superseded by root vercel.json)
+│   ├── vite.config.ts                   — Vite config: React plugin, dev proxy to localhost:8001
+│   │
+│   ├── public/
+│   │   ├── favicon.ico / .svg           — browser tab icons
+│   │   ├── favicon-{size}.png           — favicon at 16/32/48/64/96/128/180/192/512px
+│   │   ├── apple-touch-icon.png         — iOS home screen icon
+│   │   ├── android-chrome-192x192.png   — Android Chrome icon
+│   │   ├── android-chrome-512x512.png   — Android Chrome icon (large)
+│   │   ├── mn48r3eePixazoAi-1.png       — app logo / OG image asset
+│   │   ├── site.webmanifest             — PWA manifest (name, icons, theme color)
+│   │   └── _redirects                   — Netlify-style SPA redirect fallback
+│   │
+│   └── src/
+│       ├── App.tsx                      — root router: all page routes, React.lazy() code splitting, Suspense per route
+│       ├── main.tsx                     — React entry point, app-level ErrorBoundary, QueryClient, Router mount
+│       ├── vite-env.d.ts                — Vite env type declarations
+│       ├── api/
+│       │   ├── client.ts                — Axios instance, base URL, auth header injection, silent token refresh interceptor
+│       │   └── endpoints/
+│       │       ├── activity.ts          — getTaskActivityApi
+│       │       ├── auth.ts              — register, login, refresh, logout, me, getOrgsApi (exported for org switcher + login redirect)
+│       │       ├── comments.ts          — getComments, addComment, editComment, deleteComment
+│       │       ├── dashboard.ts         — getDashboardApi, getOrgActivityApi
+│       │       ├── links.ts             — getTaskLinksApi, linkPageApi, unlinkPageApi, getPageTasksApi
+│       │       ├── notifications.ts     — getNotificationsApi, markReadApi, markAllReadApi
+│       │       ├── organizations.ts     — getOrgApi, updateOrgApi, getMembersApi, inviteApi, removeMemberApi, changeRoleApi
+│       │       ├── projects.ts          — getProjectsApi, createProjectApi, getProjectApi, updateProjectApi, getStatusesApi
+│       │       ├── search.ts            — searchApi (returns res.data.results array, not res.data)
+│       │       ├── tasks.ts             — full task CRUD + labels API + getMyTasksApi
+│       │       └── wiki.ts              — wiki spaces + pages CRUD, move, search
+│       ├── components/
+│       │   ├── CommandPalette.tsx       — Cmd+K search: tasks + pages, keyboard nav, recent items from localStorage
+│       │   ├── ErrorBoundary.tsx        — app-level + page-level boundaries via react-error-boundary
+│       │   ├── ProtectedRoute.tsx       — redirects unauthenticated users to /login
+│       │   ├── backlog/
+│       │   │   ├── BacklogTaskRow.tsx       — draggable task row for backlog + sprint sections
+│       │   │   ├── CompleteSprintModal.tsx  — complete sprint: move incomplete tasks to backlog or another sprint
+│       │   │   ├── CreateSprintModal.tsx    — create sprint form (name, dates)
+│       │   │   └── StartSprintModal.tsx     — confirm start sprint (shows task count, date range)
+│       │   ├── board/
+│       │   │   ├── BoardColumn.tsx          — status column: task list, QuickAddInput inline create
+│       │   │   ├── CreateProjectModal.tsx   — new project form (name, key, type) — requires type field
+│       │   │   ├── CreateTaskModal.tsx      — full task creation: title, status, priority, type, assignee, sprint, labels
+│       │   │   ├── SortableTaskCard.tsx     — dnd-kit wrapper adding drag handle + sortable context to TaskCard
+│       │   │   └── TaskCard.tsx             — board card: title, priority dot, assignee avatar, label chips
+│       │   ├── layout/
+│       │   │   ├── NotificationsPanel.tsx   — slide-down bell panel, mark read, .filter(Boolean) crash fix
+│       │   │   ├── Sidebar.tsx              — project list, wiki spaces, My Work link, gear icon (owner/admin only)
+│       │   │   └── Topbar.tsx               — logo, org switcher dropdown, search, notification bell, user avatar
+│       │   ├── panel/
+│       │   │   └── TaskPanel.tsx            — slide-over task detail: inline edits, description, comments, activity, subtasks, linked docs
+│       │   └── wiki/
+│       │       ├── PageTree.tsx             — recursive dnd-kit page tree, options menu (rename/new child/delete)
+│       │       └── WikiEditor.tsx           — Tiptap editor: rich text, slash commands, tables, links — lazy loaded
+│       ├── hooks/
+│       │   ├── useBoardDnd.ts           — dnd-kit drag logic for board columns (reorder + cross-column move with optimistic update)
+│       │   └── useWebSocket.ts          — WS connection, auto-reconnect, dispatches notifications to React Query + Zustand
+│       ├── layouts/
+│       │   ├── OrgLayout.tsx            — topbar + sidebar shell, page-level ErrorBoundary, OrgLayout skeleton
+│       │   └── WikiLayout.tsx           — 3-column wiki shell (spaces / page tree / editor), page tree skeleton
+│       ├── lib/
+│       │   └── taskHelpers.ts           — statusColor, priorityColor, formatDate utilities
+│       ├── pages/
+│       │   ├── AcceptInvitePage.tsx     — invite token accept: new user (name + password) or existing user flow
+│       │   ├── BacklogPage.tsx          — 3 sections: active sprints / planned sprints / backlog, drag between sections
+│       │   ├── BoardPage.tsx            — kanban board, drag-and-drop columns, filter toolbar, empty states
+│       │   ├── DashboardPage.tsx        — stats row, active sprints, quick actions (dynamic project key), activity feed
+│       │   ├── ForgotPasswordPage.tsx   — request password reset email
+│       │   ├── LoginPage.tsx            — email/password login + Google OAuth button, redirects to first org on success
+│       │   ├── MembersPage.tsx          — member list, invite form (owner/admin only), remove member
+│       │   ├── MyWorkPage.tsx           — tasks assigned to current user, status tabs, priority filter, React.memo TaskRow
+│       │   ├── NotFoundPage.tsx         — 404 screen
+│       │   ├── OrgCreatePage.tsx        — new org creation wizard (name → slug → done)
+│       │   ├── OrgSettingsPage.tsx      — org name/slug edit, delete org (owner/admin only — access denied screen for members)
+│       │   ├── PageEditorPage.tsx       — wiki page shell + lazy WikiEditor, breadcrumb, autosave, EditorSkeleton fallback
+│       │   ├── ProjectSettingsPage.tsx  — label management: create with color picker, delete labels
+│       │   ├── RegisterPage.tsx         — new account registration
+│       │   ├── ResetPasswordPage.tsx    — password reset via token link
+│       │   └── WikiHomePage.tsx         — wiki landing: space list or empty state
+│       ├── stores/
+│       │   ├── authStore.ts             — Zustand store: currentUser, tokens, login/logout actions
+│       │   └── uiStore.ts               — Zustand store: global UI state (command palette open, etc.)
+│       ├── styles/
+│       │   ├── auth.css                 — login, register, forgot/reset password page styles
+│       │   ├── backlog.css              — backlog page + sprint sections + empty state styles
+│       │   ├── board.css                — kanban board, columns, task cards, filter toolbar, empty states
+│       │   ├── dashboard.css            — dashboard stats, sprint cards, activity feed styles
+│       │   ├── globals.css              — resets, base typography, scrollbar, utility classes
+│       │   ├── layout.css               — topbar, sidebar, org layout shell, project settings gear icon
+│       │   ├── members.css              — members page: list, invite form, role badges
+│       │   ├── mywork.css               — My Work page: task rows, status tabs, priority filter
+│       │   ├── projectSettings.css      — project settings page: label list, color picker
+│       │   ├── settings.css             — org settings page: form, danger zone, access denied screen
+│       │   ├── taskPanel.css            — task slide-over panel: fields, description, comments, activity
+│       │   ├── tokens.css               — CSS design tokens: colors, spacing, radii, shadows (dark theme only)
+│       │   ├── wiki.css                 — wiki layout, page tree, editor shell styles
+│       │   └── wizard.css               — org creation wizard step styles
+│       └── types/
+│           └── index.ts                 — shared TypeScript types: Task, Project, Sprint, User, Notification, etc.
+│
+└── seeds/                               — gitignored, local only
+    ├── add_ayushi.py                    — registers ayushishahi825018 + joins all 3 demo orgs
+    ├── debug_projects.py                — diagnostic: checks project access per org
+    ├── fix_demo_membership.py           — invite + accept + task assign for demo account (fixed version)
+    ├── patch_demo_owner.py              — adds demo@workscribe.app to MedSync + FinVeda
+    ├── patch_demo_tasks.py              — assigns tasks to demo account across all orgs
+    ├── patch_medsync_owner.py           — assigns tasks to Arjun (MedSync owner)
+    ├── rename_demo_user.py              — attempted display_name patch (405 — no endpoint)
+    ├── seed_demo.py                     — accidentally committed in 65facc0, removed from history
+    ├── seed_finveda.py                  — seeds FinVeda org with fintech projects + tasks + wiki
+    ├── seed_medsync.py                  — seeds MedSync org with healthcare projects + tasks + wiki
+    └── seed_shopflow_v2.py              — seeds ShopFlow org with e-commerce projects + tasks + wiki
+
 ---
 
 ## Production Demo Credentials
