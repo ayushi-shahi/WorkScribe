@@ -30,7 +30,7 @@ export default function LoginPage() {
     mutationFn: loginApi,
     onSuccess: async (data) => {
       setAuth(data.access_token, data.user)
-      identify(data.user.id)
+      try { identify(data.user.id) } catch {}
       sessionStorage.setItem('refresh_token', data.refresh_token)
       if (from && from.startsWith('/org/')) {
         navigate(from, { replace: true })
@@ -55,7 +55,7 @@ export default function LoginPage() {
         id_token: credentialResponse.credential,
       })
       setAuth(res.data.access_token, res.data.user)
-      identify(res.data.user.id)
+      try { identify(res.data.user.id) } catch {}
       sessionStorage.setItem('refresh_token', res.data.refresh_token)
       const orgsRes = await apiClient.get('/auth/orgs')
       const orgs: { slug: string }[] = orgsRes.data ?? []
