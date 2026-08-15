@@ -46,9 +46,14 @@ USER appuser
 # Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()" || exit 1
+# Health check — liveness only, so a database or Redis outage does not get the
+# container killed and restart-looped. Uses $PORT to match the bind above.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD python -c "import os,urllib.request; urllib.request.urlopen(f\"http://localhost:{os.getenv('PORT','8000')}/health\").read()" || exit 1
 
-# Default command (can be overridden in docker-compose)
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default command (can be overridden in docker-compose).
+# Binds $PORT when the host provides one (Render sets it automatically) and
+# falls back to 8000 locally. Hardcoding 8000 meant the container would listen
+# on the wrong port the moment the platform assigned a different one, which
+# presents as a service that builds fine but is unreachable.
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

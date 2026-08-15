@@ -1,27 +1,34 @@
 # Render blueprint for the WorkScribe API.
 #
-# The important line is startCommand: it runs `alembic upgrade head` before
-# booting. When a free-tier database expires and is recreated, the new database
-# is empty — without this the API starts against a schema-less database and
-# every request fails with an undefined-table error that looks identical to a
-# connection failure.
+# Mirrors the existing manually-created service (Docker runtime, rootDir
+# backend, Singapore region). An existing service does NOT pick these settings
+# up automatically — this file documents them so the service can be rebuilt
+# from scratch, and so the settings below are reviewable in git.
 #
-# To adopt: Render Dashboard → Blueprints → New Blueprint Instance, pointed at
-# this repo. An existing manually-created service keeps its own settings, so
-# mirror `startCommand` and `healthCheckPath` there instead.
+# The two settings that matter most:
+#   preDeployCommand — runs migrations before the new instance starts. When a
+#     free-tier database expires and is recreated, the new database is empty;
+#     without this the API boots against a schema-less database and every
+#     request fails with an undefined-table error that is indistinguishable
+#     from a connection failure.
+#   healthCheckPath  — /health is liveness only. It deliberately does NOT touch
+#     the database, so a dependency outage does not cause Render to
+#     restart-loop an otherwise healthy process. Use /health/ready manually to
+#     diagnose which dependency is down.
 
 services:
   - type: web
     name: workscribe-api
-    runtime: python
-    rootDir: backend
+    runtime: docker
+    repo: https://github.com/ayushi-shahi/WorkScribe
+    branch: main
+    region: singapore
     plan: free
-    buildCommand: pip install -r requirements.txt
-    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
 
-    # Liveness only — deliberately not /health/ready. A readiness probe here
-    # would make Render restart-loop the service during a database outage
-    # instead of leaving it up to report the problem.
+    preDeployCommand: alembic upgrade head
     healthCheckPath: /health
 
     envVars:
@@ -46,12 +53,16 @@ services:
       - key: GOOGLE_CLIENT_SECRET
         sync: false
 
-      # Origins the browser will call this API from. Accepts a single origin, a
+      # Origins the browser calls this API from. Accepts a single origin, a
       # comma-separated list, or a JSON array. No trailing slashes.
       - key: CORS_ORIGINS
         sync: false
       - key: FRONTEND_URL
         sync: false
+
+      # Must be an address verified with the email provider.
+      - key: EMAIL_FROM
+        value: workscribe.noreply@gmail.com
 
       # Keep the pool small: free-tier Postgres allows very few connections and
       # each web worker opens its own pool.
@@ -61,6 +72,6 @@ services:
         value: "5"
 
       # Set to true only when DATABASE_URL points at a transaction-mode pooler
-      # (Supabase port 6543 / PgBouncer).
+      # (Supabase port 6543 / PgBouncer). Neon's direct endpoint does not need it.
       - key: DB_USE_PGBOUNCER
         value: "false"
