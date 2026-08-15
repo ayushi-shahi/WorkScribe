@@ -17,8 +17,26 @@ logger = logging.getLogger(__name__)
 BREVO_URL = "https://api.brevo.com/v3/smtp/email"
 SENDER = {"name": "WorkScribe", "email": "workscribe.noreply@gmail.com"}
 
+def email_configured() -> bool:
+    """True when an email provider key is present."""
+    return bool(settings.BREVO_API_KEY)
+
+
 def _send(to_email: str, subject: str, html: str) -> None:
     """Send email via Brevo HTTP API."""
+    if not email_configured():
+        # Don't burn a request on a key we know is missing, and say so plainly.
+        # This path is silent from the user's side (password reset always
+        # reports success to prevent account enumeration), so the log is the
+        # only place the failure can surface.
+        logger.error(
+            "EMAIL NOT SENT to %s (%r): BREVO_API_KEY is not set. "
+            "Password resets and invitations will not be delivered.",
+            to_email,
+            subject,
+        )
+        return
+
     try:
         r = httpx.post(
             BREVO_URL,
@@ -36,8 +54,19 @@ def _send(to_email: str, subject: str, html: str) -> None:
         )
         r.raise_for_status()
         logger.info("Email sent to %s via Brevo", to_email)
+    except httpx.HTTPStatusError as exc:
+        # Include the provider's response body — "API Key is not enabled" and
+        # "sender not verified" are the two common causes and are otherwise
+        # indistinguishable from a network failure.
+        logger.error(
+            "EMAIL NOT SENT to %s (%r): Brevo returned %s — %s",
+            to_email,
+            subject,
+            exc.response.status_code,
+            exc.response.text[:300],
+        )
     except Exception as exc:
-        logger.error("send email failed for %s: %s", to_email, exc)
+        logger.error("EMAIL NOT SENT to %s (%r): %s", to_email, subject, exc)
 
 
 def send_invitation_email(

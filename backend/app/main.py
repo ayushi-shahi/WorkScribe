@@ -93,6 +93,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if not settings.CORS_ORIGINS:
         logger.warning("CORS_ORIGINS is empty — browser requests will be blocked")
 
+    # Optional integrations. These never block startup, but a missing key means
+    # a feature quietly does nothing, so report it once here.
+    from app.workers.email_tasks import email_configured
+
+    if email_configured():
+        logger.info("Email provider configured")
+    else:
+        logger.warning(
+            "BREVO_API_KEY is not set — password reset and invitation emails "
+            "will NOT be delivered"
+        )
+
+    if not settings.GOOGLE_CLIENT_ID:
+        logger.warning("GOOGLE_CLIENT_ID is not set — Google sign-in is disabled")
+
     yield
 
     await close_redis_client()
