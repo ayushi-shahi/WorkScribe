@@ -1,0 +1,66 @@
+# Render blueprint for the WorkScribe API.
+#
+# The important line is startCommand: it runs `alembic upgrade head` before
+# booting. When a free-tier database expires and is recreated, the new database
+# is empty — without this the API starts against a schema-less database and
+# every request fails with an undefined-table error that looks identical to a
+# connection failure.
+#
+# To adopt: Render Dashboard → Blueprints → New Blueprint Instance, pointed at
+# this repo. An existing manually-created service keeps its own settings, so
+# mirror `startCommand` and `healthCheckPath` there instead.
+
+services:
+  - type: web
+    name: workscribe-api
+    runtime: python
+    rootDir: backend
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+
+    # Liveness only — deliberately not /health/ready. A readiness probe here
+    # would make Render restart-loop the service during a database outage
+    # instead of leaving it up to report the problem.
+    healthCheckPath: /health
+
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: LOG_LEVEL
+        value: INFO
+
+      # Secrets — set these in the Render dashboard, never commit them.
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+
+      # Origins the browser will call this API from. Accepts a single origin, a
+      # comma-separated list, or a JSON array. No trailing slashes.
+      - key: CORS_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+
+      # Keep the pool small: free-tier Postgres allows very few connections and
+      # each web worker opens its own pool.
+      - key: DB_POOL_SIZE
+        value: "5"
+      - key: DB_MAX_OVERFLOW
+        value: "5"
+
+      # Set to true only when DATABASE_URL points at a transaction-mode pooler
+      # (Supabase port 6543 / PgBouncer).
+      - key: DB_USE_PGBOUNCER
+        value: "false"

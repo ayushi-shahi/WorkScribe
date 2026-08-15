@@ -1,4 +1,5 @@
 import apiClient from '@/api/client'
+import { getRefreshToken } from '@/lib/session'
 import type { AuthUser } from '@/types'
 
 export interface LoginRequest {
@@ -20,6 +21,8 @@ export interface TokenResponse {
 
 export interface RefreshResponse {
   access_token: string
+  refresh_token: string
+  user: AuthUser
 }
 
 export interface AcceptInviteRequest {
@@ -46,7 +49,10 @@ export async function registerApi(data: RegisterRequest): Promise<TokenResponse>
 }
 
 export async function logoutApi(): Promise<void> {
-  await apiClient.post('/auth/logout')
+  // The refresh token must be sent so the server can revoke it. Posting an
+  // empty body meant every sign-out failed body validation and the refresh
+  // token stayed valid server-side until it expired.
+  await apiClient.post('/auth/logout', { refresh_token: getRefreshToken() })
 }
 
 export async function refreshTokenApi(refreshToken: string): Promise<RefreshResponse> {

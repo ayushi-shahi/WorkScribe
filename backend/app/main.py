@@ -3,20 +3,28 @@ FastAPI application entry point.
 Configures middleware, routes, and exception handlers.
 """
 
+import logging
+import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-import redis.asyncio as aioredis
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from app.core.config import settings
+from app.core.database import check_db
+from app.core.logging import configure_logging
 from app.core.rate_limit import RateLimitMiddleware
+from app.core.redis_client import check_redis, close_redis_client, get_redis_client
 from app.routers.search import router as search_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.labels import router as labels_router
-from starlette.middleware.base import BaseHTTPMiddleware
+
+configure_logging()
+logger = logging.getLogger(__name__)
+
 
 class CoopMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
@@ -25,22 +33,70 @@ class CoopMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class ExceptionHandlingMiddleware(BaseHTTPMiddleware):
+    """
+    Convert unhandled exceptions into JSON responses *inside* the CORS layer.
+
+    Starlette's own 500 handler (ServerErrorMiddleware) sits outside every
+    middleware including CORSMiddleware, so a crash produced a 500 with no
+    Access-Control-Allow-Origin header. The browser then reported it as a CORS
+    policy error and hid the real failure — which is exactly why a dead
+    database looked like a CORS misconfiguration.
+
+    Returning the response from here lets CORSMiddleware, which wraps this one,
+    attach the correct headers so the frontend can read the actual error.
+    """
+
+    async def dispatch(self, request: Request, call_next):
+        try:
+            return await call_next(request)
+        except Exception as exc:
+            error_id = uuid.uuid4().hex[:12]
+            logger.exception(
+                "Unhandled error [%s] %s %s", error_id, request.method, request.url.path
+            )
+            content: dict[str, object] = {
+                "code": "INTERNAL_SERVER_ERROR",
+                "message": "An unexpected error occurred",
+                "error_id": error_id,
+            }
+            if settings.DEBUG:
+                content["message"] = str(exc)
+                content["type"] = type(exc).__name__
+            return JSONResponse(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                content={"detail": content},
+            )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
-    print(f"🚀 Starting WorkScribe API in {settings.ENVIRONMENT} mode")
+    logger.info("Starting WorkScribe API in %s mode", settings.ENVIRONMENT)
 
-    # Initialise shared Redis connection for rate limiting + app use
-    app.state.redis = aioredis.from_url(
-    str(settings.REDIS_URL),
-    encoding="utf-8",
-    decode_responses=True,
-    )
+    # Shared Redis client for rate limiting + app use
+    app.state.redis = get_redis_client()
+
+    # Report dependency health at boot so a dead/expired database or Redis is
+    # visible in the deploy logs instead of surfacing as a user-facing 500.
+    db_ok, db_err = await check_db()
+    if db_ok:
+        logger.info("Database connection OK")
+    else:
+        logger.error("Database UNREACHABLE at startup: %s", db_err)
+
+    redis_ok, redis_err = await check_redis()
+    if redis_ok:
+        logger.info("Redis connection OK")
+    else:
+        logger.error("Redis UNREACHABLE at startup: %s", redis_err)
+
+    if not settings.CORS_ORIGINS:
+        logger.warning("CORS_ORIGINS is empty — browser requests will be blocked")
 
     yield
 
-    # Graceful shutdown
-    await app.state.redis.aclose()
-    print("🛑 Shutting down WorkScribe API")
+    await close_redis_client()
+    logger.info("Shutting down WorkScribe API")
 
 
 app = FastAPI(
@@ -53,9 +109,14 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# ── Middleware (order matters — added last runs first) ───────────────────────
+# ── Middleware ───────────────────────────────────────────────────────────────
+# add_middleware prepends, so the LAST one added is the outermost layer.
+# Resulting order: CORS → ExceptionHandling → RateLimit → Coop → routes.
+# CORS must stay outermost so its headers are attached to every response,
+# including the 500s produced by ExceptionHandlingMiddleware.
 app.add_middleware(CoopMiddleware)
 app.add_middleware(RateLimitMiddleware)
+app.add_middleware(ExceptionHandlingMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -66,28 +127,25 @@ app.add_middleware(
 )
 
 # ── Exception handlers ───────────────────────────────────────────────────────
+# Backstop only: ExceptionHandlingMiddleware catches route errors first. This
+# still covers failures raised outside the middleware stack.
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    error_id = uuid.uuid4().hex[:12]
+    logger.exception(
+        "Unhandled error [%s] %s %s", error_id, request.method, request.url.path
+    )
+    content: dict[str, object] = {
+        "code": "INTERNAL_SERVER_ERROR",
+        "message": str(exc) if settings.DEBUG else "An unexpected error occurred",
+        "error_id": error_id,
+    }
     if settings.DEBUG:
-        return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            content={
-                "detail": {
-                    "code": "INTERNAL_SERVER_ERROR",
-                    "message": str(exc),
-                    "type": type(exc).__name__,
-                }
-            },
-        )
+        content["type"] = type(exc).__name__
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={
-            "detail": {
-                "code": "INTERNAL_SERVER_ERROR",
-                "message": "An unexpected error occurred",
-            }
-        },
+        content={"detail": content},
     )
 
 
@@ -95,11 +153,47 @@ async def global_exception_handler(request: Request, exc: Exception) -> JSONResp
 
 @app.get("/health", tags=["Health"])
 async def health_check() -> dict[str, str]:
+    """
+    Liveness probe — is the process up?
+
+    Deliberately does not touch the database or Redis so a dependency outage
+    does not cause the platform to restart-loop a healthy process.
+    Use /health/ready to check dependencies.
+    """
     return {
         "status": "ok",
         "environment": settings.ENVIRONMENT,
         "version": "1.0.0",
     }
+
+
+@app.get("/health/ready", tags=["Health"])
+async def readiness_check() -> JSONResponse:
+    """
+    Readiness probe — are the database and Redis actually reachable?
+
+    Returns 503 when a dependency is down, with the failing component named.
+    This is the endpoint to check first when the app misbehaves: it turns
+    "login returns 500" into "the database is gone".
+    """
+    db_ok, db_err = await check_db()
+    redis_ok, redis_err = await check_redis()
+
+    checks: dict[str, object] = {
+        "database": {"ok": db_ok, **({"error": db_err} if db_err else {})},
+        "redis": {"ok": redis_ok, **({"error": redis_err} if redis_err else {})},
+    }
+    all_ok = db_ok and redis_ok
+
+    return JSONResponse(
+        status_code=status.HTTP_200_OK if all_ok else status.HTTP_503_SERVICE_UNAVAILABLE,
+        content={
+            "status": "ready" if all_ok else "degraded",
+            "environment": settings.ENVIRONMENT,
+            "version": "1.0.0",
+            "checks": checks,
+        },
+    )
 
 
 @app.get("/", tags=["Root"])

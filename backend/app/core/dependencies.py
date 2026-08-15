@@ -6,6 +6,7 @@ Provides database sessions, current user, Redis connections, role enforcement.
 
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 import redis.asyncio as aioredis
@@ -15,12 +16,14 @@ from jose import JWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.core.database import get_db
+from app.core.redis_client import get_redis_client
 from app.core.security import blacklist_redis_key, decode_access_token
 from app.models.member import OrgMember, OrgRole
 from app.models.organization import Organization
 from app.models.user import User
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # HTTP Bearer scheme (auto_error=False so we can return custom 401)
@@ -32,23 +35,32 @@ bearer_scheme = HTTPBearer(auto_error=False)
 # Redis
 # ---------------------------------------------------------------------------
 
-_redis_pool: aioredis.Redis | None = None
-
-
 async def get_redis() -> aioredis.Redis:
     """
-    Return a shared async Redis client.
+    Return the process-wide async Redis client.
 
-    Uses a module-level pool so connections are reused across requests.
+    Delegates to app.core.redis so the whole process shares one connection
+    pool. This module used to build a second, independent pool, doubling the
+    connection count against providers that cap it on the free tier.
     """
-    global _redis_pool
-    if _redis_pool is None:
-        _redis_pool = aioredis.from_url(
-            str(settings.REDIS_URL),
-            encoding="utf-8",
-            decode_responses=True,
-        )
-    return _redis_pool
+    return get_redis_client()
+
+
+async def _is_token_blacklisted(redis: aioredis.Redis, jti: str) -> bool:
+    """
+    Check the access-token blacklist, tolerating a Redis outage.
+
+    If Redis is unreachable we fail open rather than 401/500 every
+    authenticated request. The cost is bounded: an explicitly revoked access
+    token stays usable until it expires on its own
+    (JWT_ACCESS_TOKEN_EXPIRE_MINUTES). Losing the entire site whenever the
+    free-tier Redis is recycled is the worse outcome.
+    """
+    try:
+        return bool(await redis.exists(blacklist_redis_key(jti)))
+    except Exception as exc:
+        logger.warning("Blacklist check skipped, Redis unavailable: %s", exc)
+        return False
 
 
 # ---------------------------------------------------------------------------
@@ -91,16 +103,24 @@ async def get_current_user(
     jti: str = payload.get("jti", "")
 
     # Check blacklist
-    is_blacklisted = await redis.exists(blacklist_redis_key(jti))
-    if is_blacklisted:
+    if await _is_token_blacklisted(redis, jti):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "TOKEN_REVOKED", "message": "Token has been revoked"},
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Load user
-    result = await db.execute(select(User).where(User.id == UUID(user_id)))
+    # Load user — a malformed `sub` must not surface as a 500
+    try:
+        user_uuid = UUID(user_id)
+    except (ValueError, AttributeError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "INVALID_TOKEN", "message": "Token is invalid or expired"},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    result = await db.execute(select(User).where(User.id == user_uuid))
     user = result.scalar_one_or_none()
 
     if user is None or not user.is_active:
@@ -138,8 +158,7 @@ async def get_current_user_ws(
     user_id: str = payload.get("sub", "")
     jti: str = payload.get("jti", "")
 
-    is_blacklisted = await redis.exists(blacklist_redis_key(jti))
-    if is_blacklisted:
+    if await _is_token_blacklisted(redis, jti):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"code": "TOKEN_REVOKED", "message": "Token has been revoked"},

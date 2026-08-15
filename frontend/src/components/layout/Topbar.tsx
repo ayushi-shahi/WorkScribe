@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { useMutation, useQuery } from '@tanstack/react-query'
 import { Bell, Search, ChevronDown, LogOut, User, Settings, Check } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
+import { clearRefreshToken } from '@/lib/session'
 import { useUIStore } from '@/stores/uiStore'
 import { logoutApi, getOrgsApi } from '@/api/endpoints/auth'
 import { getNotificationsApi } from '@/api/endpoints/notifications'
@@ -83,7 +84,7 @@ export default function Topbar({ org }: TopbarProps) {
     mutationFn: logoutApi,
     onSettled: () => {
       clearAuth()
-      sessionStorage.removeItem('refresh_token')
+      clearRefreshToken()
       navigate('/login', { replace: true })
     },
   })

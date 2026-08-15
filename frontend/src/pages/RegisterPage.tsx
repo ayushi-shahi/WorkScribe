@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useMutation } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
+import { setRefreshToken } from '@/lib/session'
 import { registerApi } from '@/api/endpoints/auth'
 import type { ApiError } from '@/types'
 import '@/styles/auth.css'
@@ -26,7 +27,7 @@ export default function RegisterPage() {
     mutationFn: registerApi,
     onSuccess: (data) => {
       setAuth(data.access_token, data.user)
-      sessionStorage.setItem('refresh_token', data.refresh_token)
+      setRefreshToken(data.refresh_token)
       // New user → org creation wizard
       navigate('/create-org', { replace: true })
     },

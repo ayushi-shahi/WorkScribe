@@ -7,6 +7,7 @@ All business logic lives here — routers only handle HTTP concerns.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -30,11 +31,14 @@ from app.models.member import OrgMember, OrgRole
 from app.models.organization import Organization
 from app.models.user import User
 from app.schemas.auth import (
+    AuthUser,
     LoginRequest,
     MeResponse,
     RegisterRequest,
     TokenResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -146,10 +150,23 @@ class AuthService:
         user_id: str = payload.get("sub", "")
         jti: str = payload.get("jti", "")
 
-        # Check token exists in Redis
+        # Check token exists in Redis.
+        #
+        # Only treat a *reachable* Redis reporting a missing key as revocation.
+        # If Redis itself is unreachable we cannot distinguish "revoked" from
+        # "store is down", and rejecting here would sign every user out of the
+        # app the moment a free-tier Redis is recycled. The JWT signature and
+        # expiry have already been verified above, so failing open is bounded.
         redis_key = refresh_token_redis_key(user_id, jti)
-        exists = await self.redis.exists(redis_key)
-        if not exists:
+        redis_available = True
+        try:
+            exists = await self.redis.exists(redis_key)
+        except Exception as exc:
+            logger.warning("Refresh token check skipped, Redis unavailable: %s", exc)
+            redis_available = False
+            exists = False
+
+        if redis_available and not exists:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"code": "TOKEN_REVOKED", "message": "Refresh token has been revoked"},
@@ -157,7 +174,16 @@ class AuthService:
 
         # Load user
         from uuid import UUID
-        result = await self.db.execute(select(User).where(User.id == UUID(user_id)))
+
+        try:
+            user_uuid = UUID(user_id)
+        except (ValueError, AttributeError, TypeError):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "INVALID_TOKEN", "message": "Refresh token is invalid or expired"},
+            )
+
+        result = await self.db.execute(select(User).where(User.id == user_uuid))
         user = result.scalar_one_or_none()
 
         if user is None or not user.is_active:
@@ -167,7 +193,11 @@ class AuthService:
             )
 
         # Rotate: delete old refresh token
-        await self.redis.delete(redis_key)
+        if redis_available:
+            try:
+                await self.redis.delete(redis_key)
+            except Exception as exc:
+                logger.warning("Could not revoke rotated refresh token: %s", exc)
 
         # Issue new token pair
         return await self._issue_tokens(user)
@@ -186,14 +216,22 @@ class AuthService:
 
         from app.core.security import decode_refresh_token
 
-        # Blacklist access token JTI
-        await self.redis.setex(
-            blacklist_redis_key(access_token_jti),
-            settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-            "1",
-        )
+        # Blacklist access token JTI. Best-effort — the client clears its own
+        # tokens regardless, so a Redis outage must not turn sign-out into a
+        # 500 that strands the user in a logged-in state.
+        try:
+            if access_token_jti:
+                await self.redis.setex(
+                    blacklist_redis_key(access_token_jti),
+                    settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+                    "1",
+                )
+        except Exception as exc:
+            logger.warning("Could not blacklist access token: %s", exc)
 
         # Delete refresh token from Redis
+        if not refresh_token:
+            return
         try:
             payload = decode_refresh_token(refresh_token)
             user_id: str = payload.get("sub", "")
@@ -202,6 +240,8 @@ class AuthService:
         except JWTError:
             # Refresh token may already be expired — that's fine
             pass
+        except Exception as exc:
+            logger.warning("Could not revoke refresh token on logout: %s", exc)
 
     # -----------------------------------------------------------------------
     # Forgot Password
@@ -306,16 +346,25 @@ class AuthService:
         refresh_token, refresh_jti = create_refresh_token(user_id)
         access_token = create_access_token(user_id)
 
-        # Store refresh token in Redis
+        # Store refresh token in Redis. Best-effort: a Redis outage must not
+        # make login itself fail. The tokens are self-contained JWTs, so the
+        # user can still sign in and work; only server-side revocation and
+        # refresh-rotation checks degrade until Redis returns.
         ttl_seconds = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
-        await self.redis.setex(
-            refresh_token_redis_key(user_id, refresh_jti),
-            ttl_seconds,
-            "1",
-        )
+        try:
+            await self.redis.setex(
+                refresh_token_redis_key(user_id, refresh_jti),
+                ttl_seconds,
+                "1",
+            )
+        except Exception as exc:
+            logger.warning(
+                "Could not persist refresh token, Redis unavailable: %s", exc
+            )
 
         return TokenResponse(
             access_token=access_token,
             refresh_token=refresh_token,
             expires_in=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            user=AuthUser.model_validate(user),
         )

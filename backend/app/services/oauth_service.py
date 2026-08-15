@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.security import create_access_token, create_refresh_token, refresh_token_redis_key
 from app.models.user import User
-from app.schemas.auth import TokenResponse
+from app.schemas.auth import AuthUser, TokenResponse
 
 logger = logging.getLogger(__name__)
 
@@ -167,16 +167,21 @@ async def build_token_response(user: User, redis: Any) -> TokenResponse:
     refresh_token, refresh_jti = create_refresh_token(user_id=str(user.id))
 
     # Store refresh token in Redis: refresh:{user_id}:{jti}
+    # Best-effort — a Redis outage must not break sign-in (see AuthService).
     ttl_seconds = settings.JWT_REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
-    await redis.setex(
-        refresh_token_redis_key(str(user.id), refresh_jti),
-        ttl_seconds,
-        "valid",
-    )
+    try:
+        await redis.setex(
+            refresh_token_redis_key(str(user.id), refresh_jti),
+            ttl_seconds,
+            "valid",
+        )
+    except Exception as exc:
+        logger.warning("Could not persist refresh token, Redis unavailable: %s", exc)
 
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
         token_type="bearer",
         expires_in=settings.JWT_ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        user=AuthUser.model_validate(user),
     )

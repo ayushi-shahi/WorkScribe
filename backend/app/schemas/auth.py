@@ -42,6 +42,17 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1)
 
 
+class AuthUser(BaseModel):
+    """Minimal user object embedded in auth responses."""
+
+    id: UUID
+    email: str
+    display_name: str
+    avatar_url: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class TokenResponse(BaseModel):
     """Response for login and token refresh."""
 
@@ -49,6 +60,7 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int = Field(description="Access token TTL in seconds")
+    user: AuthUser = Field(description="The authenticated user")
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +80,9 @@ class RefreshRequest(BaseModel):
 class LogoutRequest(BaseModel):
     """Request body for POST /auth/logout."""
 
-    refresh_token: str
+    # Optional: sign-out must succeed even if the client no longer holds a
+    # refresh token. Requiring it made every logout fail validation with 422.
+    refresh_token: str | None = None
 
 
 # ---------------------------------------------------------------------------

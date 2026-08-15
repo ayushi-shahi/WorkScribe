@@ -7,6 +7,7 @@ import { Toaster } from 'react-hot-toast'
 import OrgLayout from '@/layouts/OrgLayout'
 import WikiLayout from '@/layouts/WikiLayout'
 import ProtectedRoute from '@/components/ProtectedRoute'
+import AuthBootstrap from '@/components/AuthBootstrap'
 
 // Pages — lazy loaded so each route gets its own chunk
 const LoginPage           = lazy(() => import('@/pages/LoginPage'))
@@ -96,7 +97,9 @@ const router = createBrowserRouter([
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <RouterProvider router={router} />
+      <AuthBootstrap>
+        <RouterProvider router={router} />
+      </AuthBootstrap>
       <Toaster
         position="bottom-right"
         toastOptions={{

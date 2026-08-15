@@ -119,26 +119,25 @@ async def refresh(
     summary="Logout and revoke tokens",
 )
 async def logout(
-    data: LogoutRequest,
     request: Request,
+    data: LogoutRequest | None = None,
     current_user: User = Depends(get_current_user),
     service: AuthService = Depends(get_auth_service),
 ) -> None:
     auth_header = request.headers.get("Authorization", "")
     access_token = auth_header.replace("Bearer ", "")
 
+    # A token we cannot decode is already useless — treat sign-out as done
+    # rather than 401ing the client into a stuck session.
     try:
         payload = decode_access_token(access_token)
         jti: str = payload.get("jti", "")
     except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "INVALID_TOKEN", "message": "Could not decode access token"},
-        )
+        jti = ""
 
     await service.logout(
         access_token_jti=jti,
-        refresh_token=data.refresh_token,
+        refresh_token=(data.refresh_token if data else None) or "",
     )
 
 

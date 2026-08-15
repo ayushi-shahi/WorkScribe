@@ -4,6 +4,7 @@ import { useMutation } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google'
 import { useAuthStore } from '@/stores/authStore'
+import { setRefreshToken } from '@/lib/session'
 import { useEventPulse } from 'eventpulse-analytics'
 import { loginApi } from '@/api/endpoints/auth'
 import type { ApiError } from '@/types'
@@ -31,7 +32,7 @@ export default function LoginPage() {
     onSuccess: async (data) => {
       setAuth(data.access_token, data.user)
       try { identify(data.user.id) } catch {}
-      sessionStorage.setItem('refresh_token', data.refresh_token)
+      setRefreshToken(data.refresh_token)
       if (from && from.startsWith('/org/')) {
         navigate(from, { replace: true })
         return
@@ -56,7 +57,7 @@ export default function LoginPage() {
       })
       setAuth(res.data.access_token, res.data.user)
       try { identify(res.data.user.id) } catch {}
-      sessionStorage.setItem('refresh_token', res.data.refresh_token)
+      setRefreshToken(res.data.refresh_token)
       const orgsRes = await apiClient.get('/auth/orgs')
       const orgs: { slug: string }[] = orgsRes.data ?? []
       const lastSlug = localStorage.getItem('last_org_slug')

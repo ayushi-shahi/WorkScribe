@@ -1,20 +1,39 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
+import { clearRefreshToken, getRefreshToken, setRefreshToken } from '@/lib/session'
 
 // ── Axios instance ─────────────────────────────────────────────────────────────
+// Timeout has to absorb a free-tier cold start: hosts like Render spin the
+// service down after ~15 min idle, and the next request waits for the container
+// to boot. The old 15s ceiling aborted that request, so the first visit after a
+// quiet period always failed even though the backend was coming up fine.
 const apiClient = axios.create({
   baseURL: import.meta.env.VITE_API_URL as string,
   headers: {
     'Content-Type': 'application/json',
   },
-  timeout: 15000,
+  timeout: 60000,
 })
 
-// ── Token getter — reads live from Zustand store ───────────────────────────────
-export function setTokenGetter(_fn: () => string | null): void {
-  // No-op — kept for authStore import compatibility
-  // We now import useAuthStore directly (no circular dep since authStore imports client)
-  // The actual token is read inline in the interceptor below
+// Shape returned by POST /auth/refresh. `user` is present on current backends;
+// typed optional so an older deployment degrades instead of blanking the store.
+interface RefreshResult {
+  access_token: string
+  refresh_token: string
+  user?: { id: string; email: string; display_name: string; avatar_url: string | null }
+}
+
+/**
+ * Send the user to the login screen.
+ *
+ * Guarded: assigning window.location.href while already on /login triggers a
+ * full page reload, and a failing request on the login screen itself could
+ * reload the page in a loop.
+ */
+function redirectToLogin(): void {
+  if (window.location.pathname !== '/login') {
+    window.location.href = '/login'
+  }
 }
 
 // ── Refresh state — shared across all concurrent requests ─────────────────────
@@ -63,8 +82,8 @@ apiClient.interceptors.response.use(
     // Don't try to refresh if the failing request IS the refresh endpoint
     if (originalRequest.url?.includes('/auth/refresh')) {
       useAuthStore.getState().clearAuth()
-      sessionStorage.removeItem('refresh_token')
-      window.location.href = '/login'
+      clearRefreshToken()
+      redirectToLogin()
       return Promise.reject(error)
     }
 
@@ -85,26 +104,37 @@ apiClient.interceptors.response.use(
     originalRequest._retry = true
     isRefreshing = true
 
-    const refreshToken = sessionStorage.getItem('refresh_token')
+    const refreshToken = getRefreshToken()
 
     if (!refreshToken) {
       isRefreshing = false
       processQueue(error, null)
       useAuthStore.getState().clearAuth()
-      window.location.href = '/login'
+      redirectToLogin()
       return Promise.reject(error)
     }
 
     try {
       // Call refresh endpoint directly (not through apiClient to avoid intercept loop)
-      const res = await axios.post<{ access_token: string }>(
+      const res = await axios.post<RefreshResult>(
         `${import.meta.env.VITE_API_URL as string}/auth/refresh`,
         { refresh_token: refreshToken },
-        { headers: { 'Content-Type': 'application/json' } }
+        { headers: { 'Content-Type': 'application/json' }, timeout: 60000 }
       )
 
       const newToken = res.data.access_token
-      useAuthStore.getState().setAccessToken(newToken)
+
+      // The server ROTATES the refresh token: it deletes the one we just sent
+      // and returns a new one. Failing to persist it here meant the next
+      // refresh replayed a token the server had already revoked, so every
+      // session died on its second refresh and dumped the user at /login.
+      setRefreshToken(res.data.refresh_token)
+
+      if (res.data.user) {
+        useAuthStore.getState().setAuth(newToken, res.data.user)
+      } else {
+        useAuthStore.getState().setAccessToken(newToken)
+      }
 
       // Replay all queued requests with the new token
       processQueue(null, newToken)
@@ -118,8 +148,8 @@ apiClient.interceptors.response.use(
       // Refresh failed — clear auth and send to login
       processQueue(refreshError, null)
       useAuthStore.getState().clearAuth()
-      sessionStorage.removeItem('refresh_token')
-      window.location.href = '/login'
+      clearRefreshToken()
+      redirectToLogin()
       return Promise.reject(refreshError)
     } finally {
       isRefreshing = false

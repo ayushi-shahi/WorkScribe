@@ -3,6 +3,7 @@ import { useParams, useNavigate, Link } from 'react-router-dom'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { AxiosError } from 'axios'
 import { useAuthStore } from '@/stores/authStore'
+import { setRefreshToken } from '@/lib/session'
 import { getInviteDetailsApi, acceptInviteApi, loginApi } from '@/api/endpoints/auth'
 import type { ApiError } from '@/types'
 import '@/styles/auth.css'
@@ -68,7 +69,7 @@ export default function AcceptInvitePage() {
     mutationFn: () => acceptInviteApi(token ?? '', {}),
     onSuccess: (data) => {
       setAuth(data.access_token, data.user)
-      sessionStorage.setItem('refresh_token', data.refresh_token)
+      setRefreshToken(data.refresh_token)
       navigate(`/org/${invite?.org_slug ?? ''}/dashboard`, { replace: true })
     },
   })
@@ -82,7 +83,7 @@ export default function AcceptInvitePage() {
       }),
     onSuccess: (data) => {
       setAuth(data.access_token, data.user)
-      sessionStorage.setItem('refresh_token', data.refresh_token)
+      setRefreshToken(data.refresh_token)
       navigate(`/org/${invite?.org_slug ?? ''}/dashboard`, { replace: true })
     },
   })
@@ -93,13 +94,13 @@ export default function AcceptInvitePage() {
       // First login
       const loginData = await loginApi({ email: loginEmail, password: loginPassword })
       setAuth(loginData.access_token, loginData.user)
-      sessionStorage.setItem('refresh_token', loginData.refresh_token)
+      setRefreshToken(loginData.refresh_token)
       // Then accept
       return acceptInviteApi(token ?? '', {})
     },
     onSuccess: (data) => {
       setAuth(data.access_token, data.user)
-      sessionStorage.setItem('refresh_token', data.refresh_token)
+      setRefreshToken(data.refresh_token)
       navigate(`/org/${invite?.org_slug ?? ''}/dashboard`, { replace: true })
     },
   })
