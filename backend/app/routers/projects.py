@@ -21,11 +21,9 @@ from app.schemas.project import (
     ProjectListResponse,
     ProjectResponse,
     ProjectUpdateRequest,
+    StatusRead,
 )
 from app.services.project_service import ProjectService
-from app.models.task_status import TaskStatus as TaskStatusModel
-from app.schemas.project import StatusRead
-
 
 router = APIRouter()
 
@@ -126,6 +124,7 @@ async def list_statuses(
     db: AsyncSession = Depends(get_db),
 ) -> list[StatusRead]:
     from sqlalchemy import select
+
     from app.models.task_status import TaskStatus as _TaskStatus
     org, _ = org_and_member
     result = await db.execute(

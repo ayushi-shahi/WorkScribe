@@ -36,7 +36,7 @@ class Organization(Base, UUIDMixin, TimestampMixin):
     projects: Mapped[list[Project]] = relationship(
         "Project", back_populates="organization", cascade="all, delete-orphan"
     )
-    wiki_spaces: Mapped[list["WikiSpace"]] = relationship(
+    wiki_spaces: Mapped[list[WikiSpace]] = relationship(
     "WikiSpace", back_populates="org", cascade="all, delete-orphan"
 )
 

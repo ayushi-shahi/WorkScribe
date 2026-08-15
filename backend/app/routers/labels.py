@@ -1,15 +1,18 @@
 ﻿"""Labels router."""
 from __future__ import annotations
+
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_org_member, require_role
 from app.models.label import Label, TaskLabel
-from app.models.organization import Organization
 from app.models.member import OrgMember
+from app.models.organization import Organization
 from app.models.project import Project
 from app.models.task import Task
 from app.models.user import User
@@ -39,7 +42,7 @@ async def create_label(slug: str, project_id: UUID, body: LabelCreateRequest, cu
         raise HTTPException(status_code=404, detail="Project not found")
     existing = await db.execute(select(Label).where(Label.project_id == project_id, Label.name == body.name))
     if existing.scalar_one_or_none():
-        raise HTTPException(status_code=409, detail={"code": "LABEL_EXISTS", "message": f"Label already exists"})
+        raise HTTPException(status_code=409, detail={"code": "LABEL_EXISTS", "message": "Label already exists"})
     label = Label(org_id=org.id, project_id=project_id, name=body.name, color=body.color)
     db.add(label)
     await db.commit()

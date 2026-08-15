@@ -11,8 +11,7 @@ import uuid
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.notification import Notification, NotificationType
-from app.models.user import User
+from app.models.notification import Notification
 from app.schemas.notification import (
     NotificationCreate,
     NotificationListResponse,

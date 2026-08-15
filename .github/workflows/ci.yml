@@ -1,0 +1,125 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# A newer push supersedes an in-flight run for the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend — lint, migrations, tests
+    runs-on: ubuntu-latest
+
+    # Real Postgres and Redis. The app uses JSONB, UUID columns and a plpgsql
+    # trigger, so SQLite would not exercise the same code paths.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: workscribe_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/workscribe_test
+      REDIS_URL: redis://localhost:6379/0
+      JWT_SECRET_KEY: ci-secret-key-that-is-at-least-32-chars
+      CORS_ORIGINS: https://work-scribe.vercel.app
+      ENVIRONMENT: development
+      DEBUG: 'false'
+      PYTHONPATH: backend
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint (ruff)
+        run: ruff check app
+
+      - name: Apply migrations
+        run: alembic upgrade head
+
+      - name: Verify migrations are reversible
+        # Catches a downgrade() that was never written or is broken — the thing
+        # you only discover when you actually need to roll back.
+        run: |
+          alembic downgrade base
+          alembic upgrade head
+
+      - name: Smoke tests
+        run: pytest tests/test_smoke.py -q
+
+  frontend:
+    name: Frontend — typecheck, build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npx tsc -b --force
+
+      - name: Lint
+        # Non-blocking: the codebase has pre-existing violations (mostly `any`
+        # and empty catch blocks). Failing the build on them would make CI red
+        # from day one and train everyone to ignore it. Fix them, then drop
+        # this line.
+        continue-on-error: true
+        run: npm run lint
+
+      - name: Build
+        run: npm run build
+
+      - name: Guard against the SPA rewrite swallowing missing chunks
+        # The deploy config must not rewrite /assets/* to index.html: a stale
+        # code-split chunk would then return HTML with a 200 and break every
+        # session that spans a deploy.
+        working-directory: .
+        run: |
+          grep -q '(?!assets/)' vercel.json \
+            || (echo "vercel.json must exclude /assets/ from the SPA rewrite" && exit 1)
+          echo "SPA rewrite correctly excludes /assets/"

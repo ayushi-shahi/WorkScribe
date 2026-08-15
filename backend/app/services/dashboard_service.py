@@ -14,7 +14,6 @@ from app.models.project import Project
 from app.models.sprint import Sprint, SprintStatus
 from app.models.task import Task
 from app.models.task_status import StatusCategory, TaskStatus
-from app.models.user import User
 from app.models.wiki import Page, WikiSpace
 from app.schemas.dashboard import (
     ActiveSprintSummary,

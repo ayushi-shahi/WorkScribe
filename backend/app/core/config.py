@@ -163,7 +163,7 @@ class Settings(BaseSettings):
     def __init__(self, **kwargs: object) -> None:
         """Initialize settings and set Celery URLs from Redis URL if not provided."""
         super().__init__(**kwargs)
-        
+
         # Set Celery broker/backend to Redis URL if not explicitly provided
         if self.CELERY_BROKER_URL is None:
             self.CELERY_BROKER_URL = str(self.REDIS_URL)

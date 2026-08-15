@@ -13,11 +13,50 @@ Verifies that:
 - Notifications are isolated per user
 """
 
+import os
 import uuid
-import pytest
-import httpx
 
-BASE_URL = "http://api:8000"
+import httpx
+import pytest
+
+# These drive a *running* server rather than the ASGI app in-process, so they
+# only work where one is reachable — inside docker compose by default:
+#     docker compose exec api pytest tests/ -q
+# Override with WORKSCRIBE_TEST_BASE_URL to point at any other instance.
+BASE_URL = os.environ.get("WORKSCRIBE_TEST_BASE_URL", "http://api:8000")
+
+
+def _server_reachable() -> bool:
+    """
+    Probe the server, resolving the hostname first.
+
+    DNS for a docker-compose service name can hang well past an HTTP timeout on
+    a host that has no such resolver, so check name resolution separately and
+    bail out immediately when it fails.
+    """
+    import socket
+    from urllib.parse import urlparse
+
+    parsed = urlparse(BASE_URL)
+    try:
+        socket.setdefaulttimeout(2)
+        socket.getaddrinfo(parsed.hostname, parsed.port or 80)
+    except Exception:
+        return False
+
+    try:
+        httpx.get(f"{BASE_URL}/health", timeout=3)
+        return True
+    except Exception:
+        return False
+
+
+# Skip rather than fail when no server is up, so `pytest tests/` on a laptop or
+# in CI reports honestly instead of drowning real failures in connection errors.
+pytestmark = pytest.mark.skipif(
+    not _server_reachable(),
+    reason=f"no server reachable at {BASE_URL}; run inside docker compose or set WORKSCRIBE_TEST_BASE_URL",
+)
 
 
 def unique_email(prefix: str) -> str:

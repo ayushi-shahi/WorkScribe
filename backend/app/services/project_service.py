@@ -13,8 +13,6 @@ from fastapi import HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.member import OrgMember, OrgRole
-from app.models.organization import Organization
 from app.models.project import Project, ProjectType
 from app.models.user import User
 from app.schemas.project import (

@@ -12,10 +12,10 @@ from app.models.base import Base, TimestampMixin, UUIDMixin
 if TYPE_CHECKING:
     from app.models.label import Label
     from app.models.organization import Organization
+    from app.models.sprint import Sprint
     from app.models.task import Task
     from app.models.task_status import TaskStatus
     from app.models.user import User
-    from app.models.sprint import Sprint
 
 
 class ProjectType(str, enum.Enum):

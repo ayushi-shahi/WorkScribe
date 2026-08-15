@@ -12,8 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_org_member
-from app.models.organization import Organization
 from app.models.member import OrgMember
+from app.models.organization import Organization
 from app.models.user import User
 from app.services.search_service import SearchService
 

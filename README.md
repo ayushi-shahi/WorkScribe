@@ -6,6 +6,7 @@ WorkScribe is a full-stack project management platform that brings task tracking
 
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-work--scribe.vercel.app-5E6AD2?style=for-the-badge)](https://work-scribe.vercel.app/)
 [![Backend](https://img.shields.io/badge/API-workscribe--api.onrender.com-10B981?style=for-the-badge)](https://workscribe-api.onrender.com/)
+[![CI](https://github.com/ayushi-shahi/WorkScribe/actions/workflows/ci.yml/badge.svg)](https://github.com/ayushi-shahi/WorkScribe/actions/workflows/ci.yml)
 
 ---
 
@@ -85,8 +86,13 @@ It supports multi-tenant organizations, role-based access control, real-time Web
 
 ### Security
 
-* Rate limiting — 100 req/min per IP (Redis sliding window, 429 + Retry-After)
+* Rate limiting — 100 req/min per IP globally, plus far tighter per-endpoint
+  budgets on auth (10 login attempts / 5 min) so the global limit can't be used
+  as a password-guessing allowance
+* Per-account login throttling, to catch credential stuffing spread across IPs
 * JWT blacklisting on logout (JTI stored in Redis)
+* Graceful degradation — a Redis outage disables rate limiting and revocation
+  rather than taking authentication down with it
 * Cross-tenant isolation — all queries scoped by org_id
 * CORS — no wildcards, production origins via env var
 * SQL injection audit — zero raw string interpolation
@@ -95,26 +101,53 @@ It supports multi-tenant organizations, role-based access control, real-time Web
 
 ## Try It Out
 
-A fully seeded demo environment is available at  **[work-scribe.vercel.app](https://work-scribe.vercel.app/)** .
+Live at **[work-scribe.vercel.app](https://work-scribe.vercel.app/)** with a fully seeded workspace.
 
-**Demo login:**
+### Sign in
 
-| Field    | Value               |
-| -------- | ------------------- |
-| Email    | demo@workscribe.app |
-| Password | Demo@12345          |
+**Three** accounts are available, all with the password `String@12345`:
 
-The demo account has admin access across  **3 pre-seeded organizations** , each with realistic data:
+| Email                           | Signs you in as | Use it to see                          |
+| ------------------------------- | --------------- | -------------------------------------- |
+| `ayushishahi14072004@gmail.com` | Ayushi Shahi    | An owner running the flagship workspace |
+| `ayushi14072004@gmail.com`      | Riya Malhotra   | A different person's assigned work      |
+| `23cse062@jssaten.ac.in`        | Karan Mehta     | A member with reduced permissions       |
 
-| Organization | Industry   | Projects | What's inside                                               |
-| ------------ | ---------- | -------- | ----------------------------------------------------------- |
-| ShopFlow     | E-commerce | 3        | Cart, checkout, inventory — tasks, sprints, wiki, comments |
-| MedSync      | Healthcare | 3        | Patient portal, clinical dashboard, FHIR integrations       |
-| FinVeda      | Fintech    | 3        | UPI payments, lending, compliance & risk                    |
+They are real, separate users — not one account with a switcher. Open two in
+different browsers to watch a task assignment arrive live over WebSocket.
 
-Each org includes completed/active/planned sprints, 20+ tasks with subtasks and comments, wiki spaces with pages, and linked docs.
+### What's inside
 
-> **Note:** This is shared demo data. Please don't delete orgs, projects, or wiki spaces.
+| Organization    | Type                  | Ayushi's role | Contents                                            |
+| --------------- | --------------------- | ------------- | --------------------------------------------------- |
+| **Nexus Labs**  | Product company       | Owner         | 2 projects (scrum + kanban), 3 sprints, 2 wiki spaces |
+| **Craft Coffee Co.** | Small business   | Member        | Kanban storefront project, playbook wiki             |
+| **JSS Capstone** | University project   | Admin         | Scrum research portal + written-submission board     |
+
+Roles differ **per organization on purpose** — Ayushi owns one workspace, is an
+admin in another and only a member in the third, so permission differences are
+visible just by switching workspaces in the top-left dropdown.
+
+Across all three: **59 tasks**, 6 sprints (completed / active / planned), 16 wiki
+pages in nested trees, plus labels, comments, activity history, task↔doc links
+and unread notifications. Timestamps are spread over ~110 days so the activity
+feed reads like a real project.
+
+### A 5-minute tour
+
+1. **Board** (Nexus Labs → Mobile Banking App) — drag a card between columns
+2. **Backlog** — a completed, an active and a planned sprint; drag an item into the sprint
+3. **Open MBA-6** — subtasks, a comment thread, activity history, and a linked wiki page
+4. **Wiki → Engineering** — nested page tree with headings, lists and code blocks
+5. **Workspace switcher** — hop to Craft Coffee, where the same user has fewer rights
+
+> **Heads-up:** the API is on a free tier and sleeps after ~15 minutes idle, so
+> the very first request can take up to a minute while it wakes. Everything is
+> fast after that.
+
+> Demo data is shared. Feel free to create and edit things; please don't delete
+> the seeded organizations. It can be rebuilt with
+> `python seeds/seed_portfolio_demo.py`.
 
 ---
 
@@ -123,7 +156,7 @@ Each org includes completed/active/planned sprints, 20+ tasks with subtasks and 
 | Layer            | Technology                                           |
 | ---------------- | ---------------------------------------------------- |
 | Backend          | Python 3.12, FastAPI                                 |
-| Database         | PostgreSQL (Supabase), async SQLAlchemy 2.0, Alembic |
+| Database         | PostgreSQL 17 (Neon), async SQLAlchemy 2.0, Alembic  |
 | Cache            | Redis (Upstash)                                      |
 | Auth             | JWT, Google OAuth 2.0, bcrypt                        |
 | Email            | Brevo HTTP API                                       |
@@ -154,7 +187,7 @@ Each org includes completed/active/planned sprints, 20+ tasks with subtasks and 
 └──────────┬──────────────────────┬───────────────────┘
            │                      │
 ┌──────────▼──────┐    ┌──────────▼──────┐
-│    Supabase     │    │    Upstash       │
+│      Neon       │    │    Upstash       │
 │   PostgreSQL    │    │     Redis        │
 │  (primary DB)   │    │ (cache + rate    │
 │                 │    │  limit + JWT     │
@@ -180,7 +213,7 @@ Each org includes completed/active/planned sprints, 20+ tasks with subtasks and 
 * Python 3.12+
 * Node.js 18+
 * Docker & Docker Compose
-* PostgreSQL and Redis (local via Docker, or use Supabase + Upstash)
+* PostgreSQL and Redis (local via Docker, or hosted on Neon + Upstash)
 
 ### 1. Clone the repository
 
@@ -202,7 +235,7 @@ pip install -r requirements.txt
 # Copy and fill in environment variables
 cp .env.example .env
 
-# Start local database and Redis (skip if using Supabase + Upstash)
+# Start local database and Redis (skip if using hosted Neon + Upstash)
 docker compose up -d db redis
 
 # Run database migrations

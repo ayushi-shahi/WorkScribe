@@ -8,11 +8,9 @@ All business logic lives here — routers only handle HTTP concerns.
 from __future__ import annotations
 
 import logging
-import uuid
-from datetime import UTC, datetime, timedelta
 
 import redis.asyncio as aioredis
-from fastapi import HTTPException, status, BackgroundTasks
+from fastapi import BackgroundTasks, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,8 +25,6 @@ from app.core.security import (
     refresh_token_redis_key,
     verify_password,
 )
-from app.models.member import OrgMember, OrgRole
-from app.models.organization import Organization
 from app.models.user import User
 from app.schemas.auth import (
     AuthUser,
@@ -39,6 +35,22 @@ from app.schemas.auth import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Per-account login throttle.
+#
+# The middleware caps attempts per IP, which stops a single host hammering one
+# password list. It does nothing about credential stuffing spread across many
+# IPs against one account, so failures are also counted per email address.
+#
+# The threshold is deliberately generous: a low one would let anyone lock a
+# known user out of their own account by failing on purpose. This raises the
+# cost of an attack without handing out a denial-of-service primitive.
+FAILED_LOGIN_MAX = 15
+FAILED_LOGIN_WINDOW = 900  # 15 minutes
+
+
+def _login_fail_key(email: str) -> str:
+    return f"login_fail:{email.lower()}"
 
 
 class AuthService:
@@ -98,18 +110,22 @@ class AuthService:
         Returns TokenResponse with access + refresh tokens.
         Raises 401 for invalid credentials (never reveals which field is wrong).
         """
+        await self._assert_not_throttled(data.email)
+
         result = await self.db.execute(
             select(User).where(User.email == data.email.lower())
         )
         user = result.scalar_one_or_none()
 
         if user is None or user.password_hash is None:
+            await self._record_login_failure(data.email)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"code": "INVALID_CREDENTIALS", "message": "Invalid email or password"},
             )
 
         if not verify_password(data.password, user.password_hash):
+            await self._record_login_failure(data.email)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"code": "INVALID_CREDENTIALS", "message": "Invalid email or password"},
@@ -121,7 +137,54 @@ class AuthService:
                 detail={"code": "ACCOUNT_DISABLED", "message": "Account is disabled"},
             )
 
+        await self._clear_login_failures(data.email)
         return await self._issue_tokens(user)
+
+    # -----------------------------------------------------------------------
+    # Login throttling helpers — all best-effort, Redis outages must not
+    # prevent anyone from signing in.
+    # -----------------------------------------------------------------------
+
+    async def _assert_not_throttled(self, email: str) -> None:
+        try:
+            raw = await self.redis.get(_login_fail_key(email))
+        except Exception as exc:
+            logger.warning("Login throttle check skipped, Redis unavailable: %s", exc)
+            return
+
+        if raw is not None and int(raw) >= FAILED_LOGIN_MAX:
+            try:
+                ttl = await self.redis.ttl(_login_fail_key(email))
+            except Exception:
+                ttl = FAILED_LOGIN_WINDOW
+            retry_after = ttl if ttl and ttl > 0 else FAILED_LOGIN_WINDOW
+            logger.warning("Login throttled for %s", email.lower())
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail={
+                    "code": "TOO_MANY_ATTEMPTS",
+                    "message": (
+                        "Too many failed sign-in attempts. "
+                        f"Try again in {retry_after // 60 + 1} minutes."
+                    ),
+                },
+                headers={"Retry-After": str(retry_after)},
+            )
+
+    async def _record_login_failure(self, email: str) -> None:
+        key = _login_fail_key(email)
+        try:
+            count = await self.redis.incr(key)
+            if count == 1:
+                await self.redis.expire(key, FAILED_LOGIN_WINDOW)
+        except Exception as exc:
+            logger.warning("Could not record failed login: %s", exc)
+
+    async def _clear_login_failures(self, email: str) -> None:
+        try:
+            await self.redis.delete(_login_fail_key(email))
+        except Exception:
+            pass
 
     # -----------------------------------------------------------------------
     # Refresh

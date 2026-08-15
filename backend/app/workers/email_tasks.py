@@ -8,6 +8,7 @@ Uses Brevo HTTP API (port 443) — works on Render free tier.
 from __future__ import annotations
 
 import logging
+
 import httpx
 
 from app.core.config import settings

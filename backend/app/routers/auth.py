@@ -6,14 +6,19 @@ Register, login, logout, token refresh, password reset, OAuth, me.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from datetime import UTC, datetime
 
 import redis.asyncio as aioredis
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
+from pydantic import BaseModel
+from pydantic import BaseModel as PydanticBase
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, get_redis
 from app.core.security import decode_access_token
+from app.models.invitation import Invitation
 from app.models.user import User
 from app.schemas.auth import (
     ForgotPasswordRequest,
@@ -26,7 +31,6 @@ from app.schemas.auth import (
     ResetPasswordRequest,
     TokenResponse,
 )
-from app.schemas.organization import OrganizationResponse
 from app.services.auth_service import AuthService
 from app.services.oauth_service import (
     build_token_response,
@@ -34,12 +38,6 @@ from app.services.oauth_service import (
     verify_google_id_token,
 )
 from app.services.organization_service import OrganizationService
-from app.models.invitation import Invitation
-from app.models.user import User as UserModel
-from datetime import UTC, datetime
-from sqlalchemy import select
-from pydantic import BaseModel
-from pydantic import BaseModel as PydanticBase
 
 router = APIRouter()
 
@@ -279,9 +277,9 @@ async def accept_invitation(
     redis: aioredis.Redis = Depends(get_redis),
     service: OrganizationService = Depends(get_org_service),
 ) -> TokenResponse:
+    from app.core.security import hash_password
     from app.models.invitation import Invitation as Inv
     from app.models.user import User as U
-    from app.core.security import hash_password
 
     # Get invitation
     inv_result = await db.execute(select(Inv).where(Inv.token == token))
@@ -362,7 +360,7 @@ async def get_invitation_details(
         email=invitation.email,
         inviter_name=inviter.display_name if inviter else "Someone",
     )
-    
+
 # ---------------------------------------------------------------------------
 # Get user's orgs (for post-login redirect)
 # ---------------------------------------------------------------------------

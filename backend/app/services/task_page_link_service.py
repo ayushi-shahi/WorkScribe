@@ -8,7 +8,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import HTTPException
-from sqlalchemy import select, delete
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.activity_log import ActivityLog
@@ -47,8 +47,10 @@ class TaskPageLinkService:
         Both must belong to the same org. Duplicate links return 409.
         Logs to activity_log.
         """
-        # Verify task exists and belongs to org
-        task = await self._get_task_or_404(task_id, org_id)
+        # Verify task exists and belongs to org.
+        # The return value is unused — this call is here purely to raise 404
+        # when the task is missing or belongs to another tenant.
+        await self._get_task_or_404(task_id, org_id)
 
         # Verify page exists and belongs to same org
         page = await self._get_page_or_404(page_id, org_id)

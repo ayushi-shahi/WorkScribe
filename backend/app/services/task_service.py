@@ -26,7 +26,7 @@ from app.models.comment import Comment
 from app.models.label import Label, TaskLabel
 from app.models.project import Project
 from app.models.task import Task, TaskPriority, TaskType
-from app.models.task_status import TaskStatus, StatusCategory
+from app.models.task_status import StatusCategory, TaskStatus
 from app.models.user import User
 from app.schemas.task import (
     ActivityListResponse,

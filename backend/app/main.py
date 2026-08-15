@@ -5,8 +5,8 @@ Configures middleware, routes, and exception handlers.
 
 import logging
 import uuid
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,9 +18,9 @@ from app.core.database import check_db
 from app.core.logging import configure_logging
 from app.core.rate_limit import RateLimitMiddleware
 from app.core.redis_client import check_redis, close_redis_client, get_redis_client
-from app.routers.search import router as search_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.labels import router as labels_router
+from app.routers.search import router as search_router
 
 configure_logging()
 logger = logging.getLogger(__name__)
@@ -229,10 +229,10 @@ from app.routers import (  # noqa: E402
     pages,
     projects,
     sprints,
+    task_page_links,  # noqa: E402
     tasks,
     websocket,
 )
-from app.routers import task_page_links  # noqa: E402
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["Auth"])
 app.include_router(organizations.router, prefix="/api/v1/organizations", tags=["Organizations"])

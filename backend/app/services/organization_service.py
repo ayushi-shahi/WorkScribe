@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import redis.asyncio as aioredis
-from fastapi import HTTPException, status, BackgroundTasks
+from fastapi import BackgroundTasks, HTTPException, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -463,7 +463,7 @@ class OrganizationService:
 
         await self.db.delete(target_member)
         await self.db.flush()
-        
+
     # List User Organizations
 
     async def list_user_organizations(self, user_id: UUID) -> list[OrganizationResponse]:

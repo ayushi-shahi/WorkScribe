@@ -16,8 +16,8 @@ from app.models.base import Base
 
 if TYPE_CHECKING:
     from app.models.task import Task
-    from app.models.wiki import Page
     from app.models.user import User
+    from app.models.wiki import Page
 
 
 class TaskPageLink(Base):

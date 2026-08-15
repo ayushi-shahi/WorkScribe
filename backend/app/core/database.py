@@ -57,7 +57,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     FastAPI dependency for database sessions.
 
     Yields an async database session and handles commit/rollback.
-    
+
     Usage:
         @router.get("/endpoint")
         async def endpoint(db: AsyncSession = Depends(get_db)):

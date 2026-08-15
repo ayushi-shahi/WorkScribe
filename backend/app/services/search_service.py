@@ -11,9 +11,9 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.project import Project
 from app.models.task import Task
 from app.models.task_status import TaskStatus
-from app.models.project import Project
 from app.models.wiki import Page, WikiSpace
 
 

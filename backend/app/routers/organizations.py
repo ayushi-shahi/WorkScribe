@@ -9,7 +9,7 @@ from __future__ import annotations
 from uuid import UUID
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, status, BackgroundTasks
+from fastapi import APIRouter, BackgroundTasks, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
