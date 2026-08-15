@@ -22,6 +22,7 @@ WorkScribe is a full-stack project management platform that brings task tracking
 * API Reference
 * Project Structure
 * Key Design Decisions
+* Deployment & Recovery
 * License
 
 ---
@@ -79,7 +80,6 @@ It supports multi-tenant organizations, role-based access control, real-time Web
 ### Performance
 
 * Route-level code splitting — all pages lazy loaded
-* WikiEditor (Tiptap) lazy loaded — page shell renders before editor bundle
 * Redis caching — board (30s TTL) and page tree (60s TTL)
 * TanStack Query with tuned staleTime/gcTime per query type
 * React.memo on high-frequency list rows
@@ -211,7 +211,7 @@ feed reads like a real project.
 ### Prerequisites
 
 * Python 3.12+
-* Node.js 18+
+* Node.js 20+ (CI builds on 22)
 * Docker & Docker Compose
 * PostgreSQL and Redis (local via Docker, or hosted on Neon + Upstash)
 
@@ -225,6 +225,8 @@ cd WorkScribe
 ### 2. Backend setup
 
 ```bash
+cd backend
+
 # Create and activate virtual environment
 python -m venv venv
 source venv/bin/activate       # Windows: venv\Scripts\activate
@@ -247,12 +249,17 @@ uvicorn app.main:app --reload --port 8001
 
 API available at `http://localhost:8001`
 
-Interactive docs at `http://localhost:8001/docs`
+Interactive docs at `http://localhost:8001/api/docs` (requires `DEBUG=true`)
+
+Dependency health at `http://localhost:8001/health/ready`
 
 ### 3. Frontend setup
 
 ```bash
 cd frontend
+
+# Point the app at your API
+cp .env.example .env
 
 # Install dependencies
 npm install
@@ -269,21 +276,94 @@ Frontend available at `http://localhost:5173`
 
 ### Backend (`.env`)
 
+See `backend/.env.example` for the fully annotated list.
+
 | Variable                 | Description                                                              |
 | ------------------------ | ------------------------------------------------------------------------ |
-| `DATABASE_URL`         | PostgreSQL connection string (`postgresql+asyncpg://...`)              |
-| `REDIS_URL`            | Redis connection string                                                  |
-| `JWT_SECRET_KEY`       | Min 32 chars, used for signing access + refresh tokens                   |
-| `FRONTEND_URL`         | e.g.`https://work-scribe.vercel.app`                                   |
-| `BREVO_API_KEY`        | Brevo API key for transactional email                                    |
-| `GOOGLE_CLIENT_ID`     | Google OAuth client ID                                                   |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret                                               |
-| `CORS_ORIGINS`         | JSON array of allowed origins e.g.`["https://work-scribe.vercel.app"]` |
-| `PORT`                 | API port (set to `8000`on Render)                                      |
+| `DATABASE_URL`         | Must use the async driver: `postgresql+asyncpg://...`. On Neon, append `?ssl=require` and remove `sslmode`/`channel_binding` — asyncpg rejects both |
+| `REDIS_URL`            | Use `rediss://` (TLS) for hosted Redis such as Upstash                    |
+| `JWT_SECRET_KEY`       | Min 32 chars. Changing it invalidates every session                       |
+| `CORS_ORIGINS`         | Single origin, comma-separated list, or JSON array. **No trailing slash** |
+| `FRONTEND_URL`         | Used to build invitation and password-reset links                         |
+| `BREVO_API_KEY`        | Transactional email. Without it, emails are skipped and logged            |
+| `EMAIL_FROM`           | Must be a **verified sender** in Brevo or sends are rejected              |
+| `GOOGLE_CLIENT_ID`     | Google OAuth client ID                                                    |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret                                                |
+| `ENVIRONMENT`          | `development` \| `staging` \| `production`                                |
+| `DEBUG`                | `false` in production — `true` exposes stack traces and API docs          |
+| `LOG_LEVEL`            | Defaults to `INFO`                                                        |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | Keep small (5/5) — free-tier Postgres caps connections         |
+| `DB_USE_PGBOUNCER`     | `true` only behind a transaction-mode pooler (Supabase `:6543`, PgBouncer) |
+| `RATE_LIMIT_PER_MINUTE`| Global per-IP budget. Auth endpoints have their own tighter limits         |
+| `PORT`                 | Optional — the container binds `$PORT` and falls back to 8000             |
+
+### Frontend (`frontend/.env`)
+
+| Variable                   | Description                                                    |
+| -------------------------- | -------------------------------------------------------------- |
+| `VITE_API_URL`             | API base URL **including** `/api/v1`, no trailing slash. e.g. `http://localhost:8001/api/v1` |
+| `VITE_EVENTPULSE_API_KEY`  | Optional analytics key                                          |
+| `VITE_EVENTPULSE_ENDPOINT` | Optional analytics endpoint                                     |
+
+> Vite inlines `VITE_*` values **at build time**. Changing one on Vercel has no
+> effect until you redeploy.
 
 ---
 
-Built with FastAPI — all endpoints are fully documented with request/response schemas, authentication requirements, and live testing support.
+## API Reference
+
+Built with FastAPI, so every endpoint is self-documenting with request/response
+schemas, auth requirements and live testing. Run locally with `DEBUG=true` and
+open **`http://localhost:8001/api/docs`** (Swagger UI) or
+**`/api/redoc`**.
+
+> Docs are disabled in production — `docs_url` is only registered when `DEBUG`
+> is true, so the schema is not exposed publicly.
+
+### Endpoint groups
+
+| Prefix                        | Covers                                                 |
+| ----------------------------- | ------------------------------------------------------ |
+| `/api/v1/auth`                | register, login, refresh, logout, password reset, Google OAuth, invitations |
+| `/api/v1/organizations`       | orgs, members, roles, invitations                      |
+| `/api/v1/.../projects`        | projects, task statuses, labels                        |
+| `/api/v1/.../tasks`           | tasks, subtasks, comments, activity, labels, positions |
+| `/api/v1/sprints`             | create, start, complete, add/remove tasks              |
+| `/api/v1/wiki`                | spaces, pages, move, soft delete                       |
+| `/api/v1/tasks/{id}/links`    | task ↔ wiki page links                                 |
+| `/api/v1/notifications`       | list, mark read, unread count                          |
+| `/api/v1/search`              | cross-entity search within an org                      |
+| `/api/v1/ws`                  | WebSocket, authenticated by `?token=`                  |
+
+### Health endpoints
+
+| Endpoint         | Purpose                                                            |
+| ---------------- | ------------------------------------------------------------------ |
+| `/health`        | Liveness. Never touches the DB, so a dependency outage can't cause a restart loop |
+| `/health/ready`  | Readiness. Checks Postgres and Redis and returns 503 naming the failing component |
+
+`/health/ready` is the first thing to hit when something is wrong — see the
+[recovery runbook](backend/docs/DEPLOYMENT.md).
+
+---
+
+## Testing
+
+```bash
+# Smoke tests — drive the ASGI app in-process, no server required
+cd backend && pytest tests/test_smoke.py -q
+
+# Cross-tenant isolation tests — need a running server, so run them in Docker
+docker compose exec api pytest tests/ -q
+```
+
+CI runs on every push and pull request:
+
+* **Backend** — ruff, migrations against a real Postgres, a downgrade/upgrade
+  round trip proving migrations are reversible, and the smoke suite
+* **Frontend** — typecheck, production build, and a guard asserting the SPA
+  rewrite still excludes `/assets/` so stale code-split chunks can't be served
+  as HTML
 
 ---
 
@@ -291,22 +371,33 @@ Built with FastAPI — all endpoints are fully documented with request/response 
 
 ```
 WorkScribe/
-├── app/
-│   ├── core/
-│   │   ├── config.py              # Pydantic settings, all env vars
-│   │   ├── database.py            # Async SQLAlchemy engine + session
-│   │   ├── dependencies.py        # get_current_user, get_org_member, require_role
-│   │   ├── rate_limit.py          # Redis sliding window rate limiter
-│   │   ├── security.py            # bcrypt, JWT encode/decode
-│   │   └── websocket.py           # ConnectionManager singleton
-│   ├── models/                    # SQLAlchemy ORM models
-│   ├── routers/                   # FastAPI route handlers (thin layer)
-│   ├── schemas/                   # Pydantic request/response schemas
-│   ├── services/                  # All business logic lives here
-│   └── workers/
-│       ├── email_tasks.py         # Invitation + password reset emails
-│       └── notification_tasks.py  # WebSocket notification dispatch
-├── alembic/                       # 18 migration files
+├── backend/
+│   ├── app/
+│   │   ├── core/
+│   │   │   ├── config.py              # Pydantic settings, all env vars
+│   │   │   ├── database.py            # Async engine, pool tuning, check_db()
+│   │   │   ├── dependencies.py        # get_current_user, get_org_member, require_role
+│   │   │   ├── logging.py             # stdout log handler
+│   │   │   ├── rate_limit.py          # Global + per-endpoint Redis rate limiting
+│   │   │   ├── redis_client.py        # Shared Redis client, timeouts, check_redis()
+│   │   │   ├── security.py            # bcrypt, JWT encode/decode
+│   │   │   └── websocket.py           # ConnectionManager singleton
+│   │   ├── models/                    # SQLAlchemy ORM models
+│   │   ├── routers/                   # FastAPI route handlers (thin layer)
+│   │   ├── schemas/                   # Pydantic request/response schemas
+│   │   ├── services/                  # All business logic lives here
+│   │   ├── workers/
+│   │   │   ├── email_tasks.py         # Invitation + password reset emails
+│   │   │   └── notification_tasks.py  # WebSocket notification dispatch
+│   │   └── main.py                    # App factory, middleware order, health probes
+│   ├── alembic/versions/              # 18 migration files
+│   ├── docs/DEPLOYMENT.md             # Recovery runbook
+│   ├── tests/
+│   │   ├── test_smoke.py              # In-process, no server needed (runs in CI)
+│   │   └── test_isolation.py          # Cross-tenant checks, needs a live server
+│   ├── docker-compose.yml
+│   ├── Dockerfile
+│   └── requirements.txt
 ├── frontend/
 │   ├── src/
 │   │   ├── api/
@@ -317,16 +408,20 @@ WorkScribe/
 │   │   │   ├── backlog/           # BacklogTaskRow, sprint modals
 │   │   │   ├── layout/            # Topbar, Sidebar, NotificationsPanel
 │   │   │   ├── panel/             # TaskPanel slide-over
-│   │   │   └── wiki/              # PageTree, WikiEditor (Tiptap)
-│   │   ├── hooks/                 # useBoardDnd, useWebSocket, useClickOutside
-│   │   ├── pages/                 # All page components (React.lazy)
+│   │   │   ├── wiki/              # PageTree, WikiEditor (Tiptap)
+│   │   │   ├── AuthBootstrap.tsx  # Restores the session on page load
+│   │   │   └── ErrorBoundary.tsx  # Logs and surfaces render errors
+│   │   ├── hooks/                 # useBoardDnd, useWebSocket
+│   │   ├── lib/                   # session storage, lazyWithRetry, task helpers
+│   │   ├── pages/                 # All page components (lazy loaded)
 │   │   ├── stores/                # authStore, uiStore (Zustand)
 │   │   ├── styles/                # CSS design tokens, no Tailwind
 │   │   └── types/                 # TypeScript type definitions
 │   └── public/                    # Favicons, web manifest
-├── docker-compose.yml
-├── Dockerfile
-└── requirements.txt
+├── seeds/                         # Demo data generators (gitignored)
+├── .github/workflows/ci.yml       # Lint, migrations, tests, build
+├── render.yaml                    # Backend deploy blueprint
+└── vercel.json                    # Frontend build + SPA rewrite rules
 ```
 
 ---
@@ -341,6 +436,28 @@ WorkScribe/
 * **Dark theme only** — CSS custom properties in `tokens.css`, zero Tailwind dependency
 * **Route-level code splitting** — every page is `React.lazy()`, keeping the initial bundle small
 * **Cross-tenant isolation** — every query is scoped by `org_id`, enforced at the service layer
+
+---
+
+## Deployment & Recovery
+
+The backend deploys to Render from `backend/Dockerfile`; `render.yaml` documents
+the service configuration. Migrations run automatically on boot via the
+pre-deploy command, so a recreated database rebuilds its own schema. The
+frontend deploys to Vercel from `vercel.json`.
+
+**When something breaks, start here:**
+
+```bash
+curl https://workscribe-api.onrender.com/health/ready
+```
+
+It reports which dependency is at fault instead of leaving you to read logs.
+A CORS error in the browser console is almost always a 500 in disguise — check
+readiness before touching any CORS setting.
+
+Full symptom → cause → fix guide, including free-tier resource expiry, provider
+connection-string quirks and email delivery: **[backend/docs/DEPLOYMENT.md](backend/docs/DEPLOYMENT.md)**.
 
 ---
 
