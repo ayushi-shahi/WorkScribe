@@ -1,4 +1,4 @@
-import { lazy, Suspense } from 'react'
+import { Suspense } from 'react'
 import { createBrowserRouter, RouterProvider, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster } from 'react-hot-toast'
@@ -8,24 +8,25 @@ import OrgLayout from '@/layouts/OrgLayout'
 import WikiLayout from '@/layouts/WikiLayout'
 import ProtectedRoute from '@/components/ProtectedRoute'
 import AuthBootstrap from '@/components/AuthBootstrap'
+import { lazyWithRetry } from '@/lib/lazyWithRetry'
 
 // Pages — lazy loaded so each route gets its own chunk
-const LoginPage           = lazy(() => import('@/pages/LoginPage'))
-const RegisterPage        = lazy(() => import('@/pages/RegisterPage'))
-const ForgotPasswordPage  = lazy(() => import('@/pages/ForgotPasswordPage'))
-const ResetPasswordPage   = lazy(() => import('@/pages/ResetPasswordPage'))
-const AcceptInvitePage    = lazy(() => import('@/pages/AcceptInvitePage'))
-const OrgCreatePage       = lazy(() => import('@/pages/OrgCreatePage'))
-const DashboardPage       = lazy(() => import('@/pages/DashboardPage'))
-const BoardPage           = lazy(() => import('@/pages/BoardPage'))
-const BacklogPage         = lazy(() => import('@/pages/BacklogPage'))
-const MyWorkPage          = lazy(() => import('@/pages/MyWorkPage'))
-const WikiHomePage        = lazy(() => import('@/pages/WikiHomePage'))
-const PageEditorPage      = lazy(() => import('@/pages/PageEditorPage'))
-const OrgSettingsPage     = lazy(() => import('@/pages/OrgSettingsPage'))
-const MembersPage         = lazy(() => import('@/pages/MembersPage'))
-const NotFoundPage        = lazy(() => import('@/pages/NotFoundPage'))
-const ProjectSettingsPage = lazy(() => import('@/pages/ProjectSettingsPage'))
+const LoginPage           = lazyWithRetry(() => import('@/pages/LoginPage'), 'LoginPage')
+const RegisterPage        = lazyWithRetry(() => import('@/pages/RegisterPage'), 'RegisterPage')
+const ForgotPasswordPage  = lazyWithRetry(() => import('@/pages/ForgotPasswordPage'), 'ForgotPasswordPage')
+const ResetPasswordPage   = lazyWithRetry(() => import('@/pages/ResetPasswordPage'), 'ResetPasswordPage')
+const AcceptInvitePage    = lazyWithRetry(() => import('@/pages/AcceptInvitePage'), 'AcceptInvitePage')
+const OrgCreatePage       = lazyWithRetry(() => import('@/pages/OrgCreatePage'), 'OrgCreatePage')
+const DashboardPage       = lazyWithRetry(() => import('@/pages/DashboardPage'), 'DashboardPage')
+const BoardPage           = lazyWithRetry(() => import('@/pages/BoardPage'), 'BoardPage')
+const BacklogPage         = lazyWithRetry(() => import('@/pages/BacklogPage'), 'BacklogPage')
+const MyWorkPage          = lazyWithRetry(() => import('@/pages/MyWorkPage'), 'MyWorkPage')
+const WikiHomePage        = lazyWithRetry(() => import('@/pages/WikiHomePage'), 'WikiHomePage')
+const PageEditorPage      = lazyWithRetry(() => import('@/pages/PageEditorPage'), 'PageEditorPage')
+const OrgSettingsPage     = lazyWithRetry(() => import('@/pages/OrgSettingsPage'), 'OrgSettingsPage')
+const MembersPage         = lazyWithRetry(() => import('@/pages/MembersPage'), 'MembersPage')
+const NotFoundPage        = lazyWithRetry(() => import('@/pages/NotFoundPage'), 'NotFoundPage')
+const ProjectSettingsPage = lazyWithRetry(() => import('@/pages/ProjectSettingsPage'), 'ProjectSettingsPage')
 
 // ── TanStack Query client ──────────────────────────────────────────────────────
 const queryClient = new QueryClient({

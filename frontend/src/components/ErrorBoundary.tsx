@@ -1,6 +1,45 @@
 import { ErrorBoundary as ReactErrorBoundary, type FallbackProps } from 'react-error-boundary'
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react'
-import type { ReactNode } from 'react'
+import type { ErrorInfo, ReactNode } from 'react'
+
+/**
+ * Always log the captured error.
+ *
+ * The fallback UI only revealed the message in dev builds and nothing was
+ * logged, so a crash in production showed "this page ran into a problem" with
+ * no way to find out what actually broke.
+ */
+function logError(error: unknown, info: ErrorInfo): void {
+  const err = error instanceof Error ? error : undefined
+  console.error(
+    '[ErrorBoundary]', err?.message ?? String(error), '\n',
+    err?.stack ?? '', '\n',
+    'Component stack:', info?.componentStack ?? '(none)',
+  )
+}
+
+/** Small collapsible with the real message, shown in every build. */
+function ErrorDetails({ error }: { error: unknown }) {
+  const message = error instanceof Error ? error.message : String(error)
+  return (
+    <details style={{ maxWidth: 480, textAlign: 'left' }}>
+      <summary style={{
+        fontSize: 12, color: 'var(--text-muted)', cursor: 'pointer',
+        fontFamily: 'var(--font)',
+      }}>
+        Technical details
+      </summary>
+      <pre style={{
+        fontSize: 11, color: 'var(--red)', background: 'var(--surface)',
+        border: '1px solid var(--border)', borderRadius: 8,
+        padding: '10px 14px', marginTop: 8, overflow: 'auto',
+        lineHeight: 1.5, fontFamily: 'var(--font-mono)', whiteSpace: 'pre-wrap',
+      }}>
+        {message}
+      </pre>
+    </details>
+  )
+}
 
 // ── Fallback UIs ──────────────────────────────────────────────────────────────
 
@@ -19,16 +58,7 @@ function AppFallback({ error, resetErrorBoundary }: FallbackProps) {
       <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: 0, maxWidth: 400, lineHeight: 1.6 }}>
         An unexpected error occurred. Try reloading the page — if the problem persists, contact support.
       </p>
-      {import.meta.env.DEV && (
-        <pre style={{
-          fontSize: 11, color: 'var(--red)', background: 'var(--surface)',
-          border: '1px solid var(--border)', borderRadius: 8,
-          padding: '12px 16px', maxWidth: 560, overflow: 'auto',
-          textAlign: 'left', lineHeight: 1.5, fontFamily: 'var(--font-mono)',
-        }}>
-          {(error as Error).message}
-        </pre>
-      )}
+      <ErrorDetails error={error} />
       <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
         <button
           onClick={() => window.location.reload()}
@@ -75,16 +105,7 @@ function PageFallback({ error, resetErrorBoundary }: FallbackProps) {
       <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0, maxWidth: 360, lineHeight: 1.6 }}>
         Something went wrong while loading this page.
       </p>
-      {import.meta.env.DEV && (
-        <pre style={{
-          fontSize: 11, color: 'var(--red)', background: 'var(--surface)',
-          border: '1px solid var(--border)', borderRadius: 8,
-          padding: '10px 14px', maxWidth: 480, overflow: 'auto',
-          textAlign: 'left', lineHeight: 1.5, fontFamily: 'var(--font-mono)',
-        }}>
-          {(error as Error).message}
-        </pre>
-      )}
+      <ErrorDetails error={error} />
       <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
         <button
           onClick={resetErrorBoundary}
@@ -126,7 +147,7 @@ interface Props {
 export default function ErrorBoundary({ children, level = 'page' }: Props) {
   const FallbackComponent = level === 'app' ? AppFallback : PageFallback
   return (
-    <ReactErrorBoundary FallbackComponent={FallbackComponent}>
+    <ReactErrorBoundary FallbackComponent={FallbackComponent} onError={logError}>
       {children}
     </ReactErrorBoundary>
   )
