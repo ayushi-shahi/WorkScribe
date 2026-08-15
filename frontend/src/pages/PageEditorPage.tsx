@@ -9,6 +9,7 @@ import type { WikiEditorHandle } from '@/components/wiki/WikiEditor'
 import type { WikiSpace, Page } from '@/types'
 import type { PageTreeNode } from '@/api/endpoints/wiki'
 import '@/styles/wiki.css'
+import { track, Ev } from '@/lib/analytics'
 
 // Lazy-load the heavy Tiptap editor — page shell renders instantly,
 // editor bundle loads in the background
@@ -124,6 +125,7 @@ export default function PageEditorPage() {
     onSuccess: () => {
       if (pageId) clearDraft(pageId)
       queryClient.invalidateQueries({ queryKey: ['page', pageId] })
+      track(Ev.wikiPageSaved, { space_id: spaceId })
       setIsSaving(false)
       setIsDirty(false)
       setSavedFlash(true)

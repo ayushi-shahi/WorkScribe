@@ -7,6 +7,7 @@ import { setRefreshToken } from '@/lib/session'
 import { registerApi } from '@/api/endpoints/auth'
 import type { ApiError } from '@/types'
 import '@/styles/auth.css'
+import { track, identify, Ev } from '@/lib/analytics'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
@@ -28,6 +29,8 @@ export default function RegisterPage() {
     onSuccess: (data) => {
       setAuth(data.access_token, data.user)
       setRefreshToken(data.refresh_token)
+      identify(data.user.id)
+      track(Ev.signup, { method: 'password' })
       // New user → org creation wizard
       navigate('/create-org', { replace: true })
     },

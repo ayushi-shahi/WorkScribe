@@ -10,6 +10,7 @@ import { getOrgMembersApi } from '@/api/endpoints/organizations'
 import { getInitials } from '@/lib/taskHelpers'
 import toast from 'react-hot-toast'
 import type { TaskStatus, Sprint, Label, OrgMember } from '@/types'
+import { track, identify, Ev } from '@/lib/analytics'
 
 interface Props {
   projectId: string
@@ -157,6 +158,7 @@ export default function CreateTaskModal({ projectId, defaultStatusId, onClose, o
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['board', slug], exact: false, refetchType: 'all' })
+      track(Ev.taskCreated, { org_slug: slug, type, priority, has_assignee: !!assigneeId })
       toast.success('Task created')
       onCreated?.()
       onClose()

@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { getInitials } from '@/lib/taskHelpers'
 import toast from 'react-hot-toast'
 import '@/styles/members.css'
+import { track, Ev } from '@/lib/analytics'
 
 type Role = 'admin' | 'member'
 
@@ -72,6 +73,7 @@ export default function MembersPage() {
     mutationFn: () =>
       inviteMemberApi(slug ?? '', { email: inviteEmail, role: inviteRole }),
     onSuccess: () => {
+      track(Ev.memberInvited, { role: inviteRole })
       toast.success(`Invitation sent to ${inviteEmail}`)
       setInviteEmail('')
       setInviteRole('member')

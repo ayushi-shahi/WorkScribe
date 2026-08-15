@@ -4,6 +4,7 @@ import { arrayMove } from '@dnd-kit/sortable'
 import { useQueryClient } from '@tanstack/react-query'
 import { moveTaskApi, bulkUpdatePositionsApi } from '@/api/endpoints/tasks'
 import type { Task, TaskStatus } from '@/types'
+import { track, Ev } from '@/lib/analytics'
 
 interface UseBoardDndProps {
   slug: string
@@ -117,6 +118,7 @@ export function useBoardDnd({
             status_id: destStatusId,
             position: overIndex,
           })
+          track(Ev.taskStatusChanged, { surface: 'board_drag' })
         } else {
           const reordered = arrayMove(sourceCol, activeIndex, overIndex)
           await bulkUpdatePositionsApi(

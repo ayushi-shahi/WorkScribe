@@ -6,6 +6,7 @@ import { X, Zap } from 'lucide-react'
 import { startSprintApi } from '@/api/endpoints/tasks'
 import toast from 'react-hot-toast'
 import type { Sprint } from '@/types'
+import { track, identify, Ev } from '@/lib/analytics'
 
 interface StartSprintModalProps {
   sprint: Sprint
@@ -31,6 +32,7 @@ export default function StartSprintModal({ sprint, taskCount, onClose }: StartSp
       queryClient.invalidateQueries({ queryKey: ['sprints', slug] })
       queryClient.invalidateQueries({ queryKey: ['backlog', slug] })
       queryClient.invalidateQueries({ queryKey: ['board', slug] })
+      track(Ev.sprintStarted, { org_slug: slug })
       toast.success(`${sprint.name} is now active`)
       onClose()
     },

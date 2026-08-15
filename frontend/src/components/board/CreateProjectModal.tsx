@@ -5,6 +5,7 @@ import { useParams } from 'react-router-dom'
 import { X } from 'lucide-react'
 import { createProjectApi } from '@/api/endpoints/projects'
 import toast from 'react-hot-toast'
+import { track, identify, Ev } from '@/lib/analytics'
 
 interface Props {
   onClose: () => void
@@ -30,6 +31,7 @@ export default function CreateProjectModal({ onClose }: Props) {
       createProjectApi(slug ?? '', { name, key: displayKey, type }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects', slug] })
+      track(Ev.projectCreated, { org_slug: slug })
       toast.success('Project created')
       onClose()
     },

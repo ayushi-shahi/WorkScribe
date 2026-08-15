@@ -649,6 +649,16 @@ export default function TaskPanel() {
       queryClient.setQueryData(['task', resolvedId], updated)
       queryClient.invalidateQueries({ queryKey: ['board'] })
       queryClient.invalidateQueries({ queryKey: ['backlog', slug] })
+
+      const category = (updated as any)?.status?.category
+      track(Ev.taskStatusChanged, {
+        to_status: (updated as any)?.status?.name,
+        category,
+        surface: 'task_panel',
+      })
+      if (category === 'done') {
+        track(Ev.taskCompleted, { surface: 'task_panel', type: (updated as any)?.type })
+      }
     },
   })
 
@@ -743,6 +753,9 @@ export default function TaskPanel() {
     },
     onError: (_err, _vars, context) => {
       if (context?.previous) queryClient.setQueryData(['comments', resolvedId], context.previous)
+    },
+    onSuccess: () => {
+      track(Ev.commentAdded, { surface: 'task_panel' })
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ['comments', resolvedId] })
@@ -1085,6 +1098,7 @@ export default function TaskPanel() {
 // ── ActivitySection ───────────────────────────────────────────────────────────
 
 import { getActivityApi } from '@/api/endpoints/activity'
+import { track, Ev } from '@/lib/analytics'
 
 interface ActivityEntry {
   id: string

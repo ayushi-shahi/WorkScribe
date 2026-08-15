@@ -6,6 +6,7 @@ import toast from 'react-hot-toast'
 import { createOrgApi, checkSlugApi, inviteMemberApi } from '@/api/endpoints/organizations'
 import type { ApiError } from '@/types'
 import '@/styles/wizard.css'
+import { track, identify, Ev } from '@/lib/analytics'
 
 // ── Slug helpers ───────────────────────────────────────────────────────────────
 function nameToSlug(name: string): string {
@@ -46,6 +47,7 @@ function Step1({ onComplete }: Step1Props) {
   const { mutate: createOrg, isPending, error } = useMutation({
     mutationFn: createOrgApi,
     onSuccess: (org) => {
+      track(Ev.orgCreated, { org_slug: org.slug })
       onComplete(org.slug)
     },
   })

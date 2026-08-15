@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Search, FileText, CheckSquare, Clock, X } from 'lucide-react'
 import { searchApi, type SearchResult } from '@/api/endpoints/search'
 import { useUIStore } from '@/stores/uiStore'
+import { track, Ev } from '@/lib/analytics'
 
 const RECENTS_KEY = 'cmd-palette-recents'
 const MAX_RECENTS = 8
@@ -58,6 +59,15 @@ export default function CommandPalette() {
 
   // Search query
   const trimmed = query.trim()
+
+  // Report a search only after typing pauses, so one search is one event.
+  useEffect(() => {
+    if (trimmed.length < 2) return
+    const t = setTimeout(() => {
+      track(Ev.searchPerformed, { query_length: trimmed.length, surface: 'command_palette' })
+    }, 700)
+    return () => clearTimeout(t)
+  }, [trimmed])
 
   const { data: rawSearch, isFetching } = useQuery({
     queryKey: ['cmd-search', slug, trimmed],

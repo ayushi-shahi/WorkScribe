@@ -6,6 +6,7 @@ import { X, CheckCircle } from 'lucide-react'
 import { completeSprintApi } from '@/api/endpoints/tasks'
 import toast from 'react-hot-toast'
 import type { Sprint } from '@/types'
+import { track, Ev } from '@/lib/analytics'
 
 interface CompleteSprintModalProps {
   sprint: Sprint
@@ -43,6 +44,7 @@ export default function CompleteSprintModal({
       queryClient.invalidateQueries({ queryKey: ['backlog', slug] })
       queryClient.invalidateQueries({ queryKey: ['backlog-tasks', slug] })
       queryClient.invalidateQueries({ queryKey: ['board', slug] })
+      track(Ev.sprintCompleted, { org_slug: slug })
       toast.success(`${sprint.name} completed`)
       onClose()
     },
