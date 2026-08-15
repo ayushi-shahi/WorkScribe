@@ -15,7 +15,11 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 BREVO_URL = "https://api.brevo.com/v3/smtp/email"
-SENDER = {"name": "WorkScribe", "email": "workscribe.noreply@gmail.com"}
+
+# Read from settings rather than hardcoded: the from-address must match a
+# sender verified with the provider, and which address that is changes per
+# environment. EMAIL_FROM existed in config but was previously ignored.
+SENDER = {"name": settings.EMAIL_FROM_NAME, "email": settings.EMAIL_FROM}
 
 def email_configured() -> bool:
     """True when an email provider key is present."""

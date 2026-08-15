@@ -110,8 +110,15 @@ class Settings(BaseSettings):
         description="Brevo API key for sending transactional emails",
     )
     EMAIL_FROM: str = Field(
-        default="noreply@workscribe.app",
-        description="From email address",
+        default="workscribe.noreply@gmail.com",
+        description=(
+            "From address for outgoing email. MUST be verified with the email "
+            "provider — Brevo rejects sends from unverified senders."
+        ),
+    )
+    EMAIL_FROM_NAME: str = Field(
+        default="WorkScribe",
+        description="Display name shown on outgoing email",
     )
 
     # CORS
